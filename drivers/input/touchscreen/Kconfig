@@ -1290,4 +1290,10 @@ source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
 source "drivers/input/touchscreen/goodix_gtx8/Kconfig"
 source "drivers/input/touchscreen/station_goodix_gtx8/Kconfig"
 
+config SWEEP2SLEEP
+        tristate "Sweep to put device to sleep"
+        default y
+        help
+          Say Y here to support sweep2sleep
+
 endif
