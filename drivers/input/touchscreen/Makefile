@@ -111,3 +111,4 @@ obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	+= hxchipset/
 obj-$(CONFIG_TOUCHSCREEN_GOODIX_GTX8)	+= goodix_gtx8/
 obj-m += station_focaltech_touch/
 obj-m += station_goodix_gtx8/
+obj-$(CONFIG_SWEEP2SLEEP)		+= sweep2sleep.o
