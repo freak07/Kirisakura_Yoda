@@ -52,6 +52,9 @@ static int ion_page_pool_add(struct ion_page_pool *pool, struct page *page)
 
 	mod_node_page_state(page_pgdat(page), NR_INDIRECTLY_RECLAIMABLE_BYTES,
 			    (1 << (PAGE_SHIFT + pool->order)));
+
+	mod_node_page_state(page_pgdat(page), NR_KERNEL_MISC_RECLAIMABLE,
+							1 << pool->order);
 	mutex_unlock(&pool->mutex);
 	return 0;
 }
@@ -73,6 +76,9 @@ static struct page *ion_page_pool_remove(struct ion_page_pool *pool, bool high)
 	list_del(&page->lru);
 	mod_node_page_state(page_pgdat(page), NR_INDIRECTLY_RECLAIMABLE_BYTES,
 			    -(1 << (PAGE_SHIFT + pool->order)));
+
+	mod_node_page_state(page_pgdat(page), NR_KERNEL_MISC_RECLAIMABLE,
+							-(1 << pool->order));
 	return page;
 }
 
