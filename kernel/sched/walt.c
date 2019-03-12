@@ -2757,7 +2757,8 @@ int preferred_cluster(struct sched_cluster *cluster, struct task_struct *p)
 
 	grp = task_related_thread_group(p);
 	if (grp)
-		rc = (sched_cluster[(int)grp->skip_min] == cluster);
+		rc = (sched_cluster[(int)grp->skip_min] == cluster ||
+		      cpumask_subset(&cluster->cpus, &asym_cap_sibling_cpus));
 
 	rcu_read_unlock();
 	return rc;
