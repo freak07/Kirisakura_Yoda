@@ -2594,7 +2594,7 @@ void update_best_cluster(struct related_thread_group *grp,
 int preferred_cluster(struct sched_cluster *cluster, struct task_struct *p)
 {
 	struct related_thread_group *grp;
-	int rc = 1;
+	int rc = -1;
 
 	rcu_read_lock();
 
