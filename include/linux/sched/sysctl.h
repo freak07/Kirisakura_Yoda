@@ -45,7 +45,7 @@ extern unsigned int sysctl_sched_many_wakeup_threshold;
 extern unsigned int sysctl_sched_walt_rotate_big_tasks;
 extern unsigned int sysctl_sched_min_task_util_for_boost;
 extern unsigned int sysctl_sched_min_task_util_for_colocation;
-
+extern unsigned int sysctl_sched_coloc_downmigrate_ns;
 extern int
 walt_proc_group_thresholds_handler(struct ctl_table *table, int write,
 			 void __user *buffer, size_t *lenp,
