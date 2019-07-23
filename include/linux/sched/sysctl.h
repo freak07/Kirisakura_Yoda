@@ -54,6 +54,10 @@ extern unsigned int sysctl_sched_window_stats_policy;
 extern unsigned int sysctl_sched_ravg_window_nr_ticks;
 extern unsigned int sysctl_sched_dynamic_ravg_window_enable;
 extern unsigned int sysctl_sched_prefer_spread;
+extern unsigned int sysctl_sched_busy_hyst_enable_cpus;
+extern unsigned int sysctl_sched_busy_hyst;
+extern unsigned int sysctl_sched_coloc_busy_hyst_enable_cpus;
+extern unsigned int sysctl_sched_coloc_busy_hyst;
 
 extern int
 walt_proc_group_thresholds_handler(struct ctl_table *table, int write,
@@ -147,6 +151,5 @@ extern int sysctl_schedstats(struct ctl_table *table, int write,
 extern char sched_lib_name[LIB_PATH_LENGTH];
 extern unsigned int sched_lib_mask_force;
 extern bool is_sched_lib_based_app(pid_t pid);
-extern unsigned int sysctl_sched_busy_hysteresis_enable_cpus;
 
 #endif /* _LINUX_SCHED_SYSCTL_H */

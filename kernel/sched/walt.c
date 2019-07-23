@@ -2769,13 +2769,16 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 	u64 combined_demand = 0;
 	bool group_boost = false;
 	u64 wallclock;
+	bool prev_skip_min = grp->skip_min;
 
-	if (list_empty(&grp->tasks))
-		return;
+	if (list_empty(&grp->tasks)) {
+		grp->skip_min = false;
+		goto out;
+	}
 
 	if (!hmp_capable()) {
 		grp->skip_min = false;
-		return;
+		goto out;
 	}
 
 	wallclock = sched_ktime_clock();
@@ -2809,6 +2812,11 @@ static void _set_preferred_cluster(struct related_thread_group *grp)
 	grp->last_update = wallclock;
 	update_best_cluster(grp, combined_demand, group_boost);
 	trace_sched_set_preferred_cluster(grp, combined_demand);
+out:
+	if (grp->id == DEFAULT_CGROUP_COLOC_ID
+	    && grp->skip_min != prev_skip_min)
+		sched_update_hyst_times();
+
 }
 
 void set_preferred_cluster(struct related_thread_group *grp)
@@ -3369,7 +3377,7 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
 	trace_sched_migration_update_sum(p, migrate_type, rq);
 }
 
-static bool is_rtgb_active(void)
+bool is_rtgb_active(void)
 {
 	struct related_thread_group *grp;
 

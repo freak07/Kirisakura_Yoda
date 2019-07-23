@@ -449,6 +449,8 @@ static int in_sched_bug;
 	}						\
 })
 
+extern bool is_rtgb_active(void);
+
 #else /* CONFIG_SCHED_WALT */
 
 static inline void walt_sched_init_rq(struct rq *rq) { }
