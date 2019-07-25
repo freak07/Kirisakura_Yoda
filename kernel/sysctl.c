@@ -417,13 +417,6 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &one_thousand,
 	},
 	{
-		.procname	= "sched_coloc_downmigrate_ns",
-		.data		= &sysctl_sched_coloc_downmigrate_ns,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_douintvec_minmax,
-	},
-	{
 		.procname       = "sched_asym_cap_sibling_freq_match_pct",
 		.data           = &sysctl_sched_asym_cap_sibling_freq_match_pct,
 		.maxlen         = sizeof(unsigned int),
@@ -431,6 +424,22 @@ static struct ctl_table kern_table[] = {
 		.proc_handler   = proc_dointvec_minmax,
 		.extra1         = &one,
 		.extra2         = &one_hundred,
+	},
+	{
+		.procname	= "sched_coloc_downmigrate_ns",
+		.data		= &sysctl_sched_coloc_downmigrate_ns,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec_minmax,
+	},
+	{
+		.procname	= "sched_task_unfilter_nr_windows",
+		.data		= &sysctl_sched_task_unfilter_nr_windows,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = &zero,
+		.extra2		= &two_hundred_fifty_five,
 	},
 #endif
 	{
