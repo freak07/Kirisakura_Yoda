@@ -1058,6 +1058,8 @@ struct f2fs_io_info {
 	bool retry;		/* need to reallocate block address */
 	enum iostat_type io_type;	/* io type */
 	struct writeback_control *io_wbc; /* writeback control */
+	struct bio **bio;		/* bio for ipu */
+	sector_t *last_block;		/* last block number in bio */
 	unsigned char version;		/* version of the node */
 };
 
@@ -1074,7 +1076,7 @@ struct f2fs_bio_info {
 
 /* iv sector for security/pfe/pfk_fscrypt.c and f2fs */
 #define PG_DUN(i,p)                                            \
-	((((i)->i_ino & 0xffffffff) << 32) | ((p)->index & 0xffffffff))
+	((((i)->i_ino & 0xffffffff) << 32) | (page_index(p) & 0xffffffff))
 
 #define FDEV(i)				(sbi->devs[i])
 #define RDEV(i)				(raw_super->devs[i])
@@ -3172,6 +3174,7 @@ void f2fs_submit_merged_write_cond(struct f2fs_sb_info *sbi,
 				nid_t ino, enum page_type type);
 void f2fs_flush_merged_writes(struct f2fs_sb_info *sbi);
 int f2fs_submit_page_bio(struct f2fs_io_info *fio);
+int f2fs_merge_page_bio(struct f2fs_io_info *fio);
 void f2fs_submit_page_write(struct f2fs_io_info *fio);
 struct block_device *f2fs_target_device(struct f2fs_sb_info *sbi,
 			block_t blk_addr, struct bio *bio);
