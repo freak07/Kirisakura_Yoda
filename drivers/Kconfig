@@ -227,6 +227,8 @@ source "drivers/sensors/Kconfig"
 
 source "drivers/esoc/Kconfig"
 
+source "techpack/data/drivers/Kconfig"
+
 config TEXURA_USERDEBUG
 	bool "Texura userdebug module for ASUS ZS660KL"
 	depends on NLS_UTF8
