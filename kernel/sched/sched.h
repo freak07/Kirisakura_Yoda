@@ -2979,7 +2979,11 @@ extern void walt_update_min_max_capacity(void);
 
 static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
 {
-	return is_min_capacity_cpu(cluster_first_cpu(cluster));
+	int cpu = cluster_first_cpu(cluster);
+
+	if (cpu >= num_possible_cpus())
+		return false;
+	return is_min_capacity_cpu(cpu);
 }
 
 #else	/* CONFIG_SCHED_WALT */
