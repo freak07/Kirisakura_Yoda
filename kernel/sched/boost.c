@@ -15,6 +15,8 @@
 #include <linux/of.h>
 #include <linux/sched/core_ctl.h>
 #include <trace/events/sched.h>
+#include <linux/cpu_input_boost.h>
+#include <linux/devfreq_boost.h>
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 static int boost_slot;
@@ -218,6 +220,14 @@ static void sched_boost_disable_all(void)
 
 static void _sched_set_boost(int type)
 {
+#if defined(CONFIG_CPU_INPUT_BOOST) && defined(CONFIG_DEVFREQ_BOOST)
+	if (type > 0) {
+		cpu_input_boost_kick();
+		devfreq_boost_kick(DEVFREQ_MSM_CPUBW);
+		devfreq_boost_kick(DEVFREQ_MSM_LLCCBW);
+	}
+		return;
+#endif
 
 #ifdef CONFIG_DYNAMIC_STUNE_BOOST
 	if (type > 0)
