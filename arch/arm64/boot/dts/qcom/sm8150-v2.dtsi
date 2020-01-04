@@ -35,6 +35,10 @@
 	qcom,sde-min-llcc-ib-kbps = <0>;
 };
 
+&mdss_dsi_phy0 {
+       qcom,panel-allow-phy-poweroff;
+};
+
 &mdss_rotator {
 	smmu_rot_unsec: qcom,smmu_rot_unsec_cb {
 		compatible = "qcom,smmu_sde_rot_unsec";
