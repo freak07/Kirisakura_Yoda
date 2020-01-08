@@ -470,7 +470,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= sched_ravg_window_handler,
 	},
-#endif
 	{
 		.procname	= "sched_dynamic_ravg_window_enable",
 		.data		= &sysctl_sched_dynamic_ravg_window_enable,
@@ -494,6 +493,16 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= sched_updown_migrate_handler,
 	},
+	{
+		.procname	= "sched_prefer_spread",
+		.data		= &sysctl_sched_prefer_spread,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &two,
+	},
+#endif
 #ifdef CONFIG_SCHED_DEBUG
 	{
 		.procname	= "sched_min_granularity_ns",
