@@ -1803,9 +1803,10 @@ static inline long qcedev_ioctl(struct file *file,
 				handle->sha_ctxt.diglen);
 		mutex_unlock(&hash_access_lock);
 		if (copy_to_user((void __user *)arg, &qcedev_areq->sha_op_req,
-					sizeof(struct qcedev_sha_op_req)))
+					sizeof(struct qcedev_sha_op_req))) {
 			err = -EFAULT;
 			goto exit_free_qcedev_areq;
+		}
 		}
 		break;
 
@@ -1895,9 +1896,10 @@ static inline long qcedev_ioctl(struct file *file,
 				handle->sha_ctxt.diglen);
 		mutex_unlock(&hash_access_lock);
 		if (copy_to_user((void __user *)arg, &qcedev_areq->sha_op_req,
-					sizeof(struct qcedev_sha_op_req)))
+					sizeof(struct qcedev_sha_op_req))) {
 			err = -EFAULT;
 			goto exit_free_qcedev_areq;
+		}
 		}
 		break;
 
@@ -2080,7 +2082,7 @@ static int qcedev_probe_device(struct platform_device *pdev)
 	podev->mem_client = qcedev_mem_new_client(MEM_ION);
 	if (!podev->mem_client) {
 		pr_err("%s: err: qcedev_mem_new_client failed\n", __func__);
-		goto exit_qce_close;
+		goto exit_qce_req_bw;
 	}
 
 	rc = of_platform_populate(pdev->dev.of_node, qcedev_match,
@@ -2097,12 +2099,15 @@ exit_mem_new_client:
 	if (podev->mem_client)
 		qcedev_mem_delete_client(podev->mem_client);
 	podev->mem_client = NULL;
-
+exit_qce_req_bw:
+	if (msm_bus_scale_client_update_request(podev->bus_scale_handle, 1))
+		pr_err("%s Unable to set high bandwidth\n", __func__);
 exit_qce_close:
 	if (handle)
 		qce_close(handle);
 exit_scale_busbandwidth:
-	msm_bus_scale_client_update_request(podev->bus_scale_handle, 0);
+	if (msm_bus_scale_client_update_request(podev->bus_scale_handle, 0))
+		pr_err("%s Unable to set low bandwidth\n", __func__);
 exit_unregister_bus_scale:
 	if (podev->platform_support.bus_scale_table != NULL)
 		msm_bus_scale_unregister_client(podev->bus_scale_handle);
@@ -2141,8 +2146,14 @@ static int qcedev_remove(struct platform_device *pdev)
 	podev = platform_get_drvdata(pdev);
 	if (!podev)
 		return 0;
+	if (msm_bus_scale_client_update_request(podev->bus_scale_handle, 1))
+		pr_err("%s Unable to set high bandwidth\n", __func__);
+
 	if (podev->qce)
 		qce_close(podev->qce);
+
+	if (msm_bus_scale_client_update_request(podev->bus_scale_handle, 0))
+		pr_err("%s Unable to set low bandwidth\n", __func__);
 
 	if (podev->platform_support.bus_scale_table != NULL)
 		msm_bus_scale_unregister_client(podev->bus_scale_handle);

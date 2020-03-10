@@ -215,6 +215,11 @@ const char *ipa_clients_strings[IPA_CLIENT_MAX] = {
 	__stringify(IPA_CLIENT_MHI_PRIME_TETH_PROD),
 	__stringify(IPA_CLIENT_MHI_PRIME_TETH_CONS),
 	__stringify(IPA_CLIENT_MHI_PRIME_DPL_PROD),
+	__stringify(RESERVERD_CONS_103),
+	__stringify(IPA_CLIENT_MHI2_PROD),
+	__stringify(IPA_CLIENT_MHI2_CONS),
+	__stringify(IPA_CLIENT_Q6_CV2X_PROD),
+	__stringify(IPA_CLIENT_Q6_CV2X_CONS),
 };
 
 /**
@@ -2561,13 +2566,14 @@ bool ipa_has_open_aggr_frame(enum ipa_client_type client)
 
 int ipa_mhi_resume_channels_internal(enum ipa_client_type client,
 		bool LPTransitionRejected, bool brstmode_enabled,
-		union __packed gsi_channel_scratch ch_scratch, u8 index)
+		union __packed gsi_channel_scratch ch_scratch, u8 index,
+		bool is_switch_to_dbmode)
 {
 	int ret;
 
 	IPA_API_DISPATCH_RETURN(ipa_mhi_resume_channels_internal, client,
 			LPTransitionRejected, brstmode_enabled, ch_scratch,
-			index);
+			index, is_switch_to_dbmode);
 
 	return ret;
 }
@@ -3531,6 +3537,19 @@ int ipa_disable_wdi_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx)
 }
 
 /**
+ * ipa_get_lan_rx_napi() - returns if NAPI is enabled in LAN RX
+ */
+bool ipa_get_lan_rx_napi(void)
+{
+	bool ret;
+
+	IPA_API_DISPATCH_RETURN_BOOL(ipa_get_lan_rx_napi);
+
+	return ret;
+}
+EXPORT_SYMBOL(ipa_get_lan_rx_napi);
+
+/**
  * ipa_wigig_uc_msi_init() - smmu map\unmap msi related wigig HW registers
  *	and init\deinit uC msi config
  */
@@ -3648,6 +3667,45 @@ void ipa_deregister_client_callback(enum ipa_client_type client)
 		client);
 }
 
+int ipa_uc_debug_stats_alloc(
+	struct IpaHwOffloadStatsAllocCmdData_t cmdinfo)
+{
+	int ret;
+
+	IPA_API_DISPATCH_RETURN(ipa_uc_debug_stats_alloc, cmdinfo);
+
+	return ret;
+}
+EXPORT_SYMBOL(ipa_uc_debug_stats_alloc);
+
+int ipa_uc_debug_stats_dealloc(uint32_t prot_id)
+{
+	int ret;
+
+	IPA_API_DISPATCH_RETURN(ipa_uc_debug_stats_dealloc, prot_id);
+
+	return ret;
+}
+EXPORT_SYMBOL(ipa_uc_debug_stats_dealloc);
+
+void ipa_get_gsi_stats(int prot_id,
+	struct ipa_uc_dbg_ring_stats *stats)
+{
+	IPA_API_DISPATCH(ipa_get_gsi_stats,
+		prot_id, stats);
+}
+EXPORT_SYMBOL(ipa_get_gsi_stats);
+
+int ipa_get_prot_id(enum ipa_client_type client)
+{
+	int ret;
+
+	IPA_API_DISPATCH_RETURN(ipa_get_prot_id,
+		client);
+
+	return ret;
+}
+EXPORT_SYMBOL(ipa_get_prot_id);
 
 /**
  * ipa_pm_is_used() - Returns if IPA PM framework is used

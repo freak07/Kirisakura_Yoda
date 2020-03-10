@@ -58,6 +58,7 @@ struct stmmac_tx_queue {
 	unsigned int dirty_tx;
 	dma_addr_t dma_tx_phy;
 	u32 tx_tail_addr;
+	bool skip_sw;
 };
 
 struct stmmac_rx_queue {
@@ -73,6 +74,7 @@ struct stmmac_rx_queue {
 	dma_addr_t dma_rx_phy;
 	u32 rx_tail_addr;
 	struct napi_struct napi ____cacheline_aligned_in_smp;
+	bool skip_sw;
 };
 
 struct stmmac_priv {
@@ -96,7 +98,9 @@ struct stmmac_priv {
 	struct net_device *dev;
 	struct device *device;
 	struct mac_device_info *hw;
-	spinlock_t lock;
+
+	/* Mutex lock */
+	struct mutex lock;
 
 	/* RX Queue */
 	struct stmmac_rx_queue rx_queue[MTL_MAX_RX_QUEUES];
@@ -146,6 +150,29 @@ struct stmmac_priv {
 	struct dentry *dbgfs_dma_cap;
 #endif
 };
+
+struct emac_emb_smmu_cb_ctx {
+	bool valid;
+	struct platform_device *pdev_master;
+	struct platform_device *smmu_pdev;
+	struct dma_iommu_mapping *mapping;
+	struct iommu_domain *iommu_domain;
+	u32 va_start;
+	u32 va_size;
+	u32 va_end;
+	int ret;
+};
+
+extern struct emac_emb_smmu_cb_ctx emac_emb_smmu_ctx;
+
+#define GET_MEM_PDEV_DEV (emac_emb_smmu_ctx.valid ? \
+			&emac_emb_smmu_ctx.smmu_pdev->dev : priv->device)
+
+int ethqos_handle_prv_ioctl(struct net_device *dev, struct ifreq *rq, int cmd);
+int ethqos_init_pps(struct stmmac_priv *priv);
+
+extern bool phy_intr_en;
+void qcom_ethqos_request_phy_wol(struct plat_stmmacenet_data *plat_dat);
 
 int stmmac_mdio_unregister(struct net_device *ndev);
 int stmmac_mdio_register(struct net_device *ndev);

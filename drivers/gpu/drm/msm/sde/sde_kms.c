@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -19,6 +19,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <drm/drm_crtc.h>
+#include <drm/drm_fixed.h>
 #include <linux/debugfs.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -1054,7 +1055,7 @@ static void sde_kms_commit(struct msm_kms *kms,
 	SDE_ATRACE_END("sde_kms_commit");
 }
 
-static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
+void sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 		struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv;
@@ -1117,6 +1118,8 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	struct drm_crtc_state *old_crtc_state;
 	struct drm_connector *connector;
 	struct drm_connector_state *old_conn_state;
+	struct msm_display_conn_params params;
+
 	int i, rc = 0;
 
 	if (!kms || !old_state)
@@ -1148,7 +1151,18 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 		c_conn = to_sde_connector(connector);
 		if (!c_conn->ops.post_kickoff)
 			continue;
-		rc = c_conn->ops.post_kickoff(connector);
+
+		memset(&params, 0, sizeof(params));
+
+		if (c_conn->qsync_updated &&
+			(c_conn->qsync_mode == SDE_RM_QSYNC_ONE_SHOT_MODE)) {
+			/* Reset qsync states if mode is one shot */
+			params.qsync_mode = c_conn->qsync_mode = 0;
+			params.qsync_update = true;
+			SDE_EVT32(connector->base.id, c_conn->qsync_mode);
+		}
+
+		rc = c_conn->ops.post_kickoff(connector, &params);
 		if (rc) {
 			pr_err("Connector Post kickoff failed rc=%d\n",
 					 rc);
@@ -1158,7 +1172,7 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	sde_power_resource_enable(&priv->phandle, sde_kms->core_client, false);
 
 	for_each_crtc_in_state(old_state, crtc, old_crtc_state, i)
-		_sde_kms_release_splash_resource(sde_kms, crtc);
+		sde_kms_release_splash_resource(sde_kms, crtc);
 
 	SDE_EVT32_VERBOSE(SDE_EVTLOG_FUNC_EXIT);
 	SDE_ATRACE_END("sde_kms_complete_commit");
@@ -1297,6 +1311,8 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 	sde_kms->dp_displays = NULL;
 	sde_kms->dp_display_count = dp_display_get_num_of_displays();
 	if (sde_kms->dp_display_count) {
+		int i;
+
 		sde_kms->dp_displays = kcalloc(sde_kms->dp_display_count,
 				sizeof(void *), GFP_KERNEL);
 		if (!sde_kms->dp_displays) {
@@ -1307,7 +1323,14 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			dp_display_get_displays(sde_kms->dp_displays,
 					sde_kms->dp_display_count);
 
-		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
+		for (i = 0; i < sde_kms->dp_display_count; i++) {
+			sde_kms->dp_stream_count +=
+				dp_display_get_num_of_streams(
+					sde_kms->dp_displays[i]);
+			sde_kms->dp_bond_count +=
+				dp_display_get_num_of_bonds(
+					sde_kms->dp_displays[i]);
+		}
 	}
 	return 0;
 
@@ -1381,6 +1404,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.cmd_transfer = dsi_display_cmd_transfer,
 		.cont_splash_config = dsi_display_cont_splash_config,
 		.get_panel_vfp = dsi_display_get_panel_vfp,
+		.prepare_commit = dsi_conn_prepare_commit,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -1398,6 +1422,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_panel_vfp = NULL,
 	};
 	static const struct sde_connector_ops dp_ops = {
+		.set_info_blob = dp_connnector_set_info_blob,
 		.post_init  = dp_connector_post_init,
 		.detect     = dp_connector_detect,
 		.get_modes  = dp_connector_get_modes,
@@ -1406,6 +1431,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_mode_info  = dp_connector_get_mode_info,
 		.post_open  = dp_connector_post_open,
 		.check_status = NULL,
+		.atomic_best_encoder = dp_connector_atomic_best_encoder,
+		.atomic_check = dp_connector_atomic_check,
 		.config_hdr = dp_connector_config_hdr,
 		.cmd_transfer = NULL,
 		.cont_splash_config = NULL,
@@ -1425,7 +1452,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 	max_encoders = sde_kms->dsi_display_count + sde_kms->wb_display_count +
 				sde_kms->dp_display_count +
-				sde_kms->dp_stream_count;
+				sde_kms->dp_stream_count +
+				(sde_kms->dp_stream_count >> 1) +
+				sde_kms->dp_bond_count;
 	if (max_encoders > ARRAY_SIZE(priv->encoders)) {
 		max_encoders = ARRAY_SIZE(priv->encoders);
 		SDE_ERROR("capping number of displays to %d", max_encoders);
@@ -1527,10 +1556,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 		}
 	}
+
 	/* dp */
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
+		int dp_stream_count;
+		u32 dp_intf_idx[DP_STREAM_MAX];
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -1573,8 +1605,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
-		for (idx = 0; idx < sde_kms->dp_stream_count; idx++) {
-			info.h_tile_instance[0] = idx;
+		dp_stream_count = dp_display_get_num_of_streams(display);
+
+		/* make a copy of h_tile_instance */
+		for (idx = 0; idx < dp_stream_count; idx++)
+			dp_intf_idx[idx] = info.h_tile_instance[idx];
+
+		for (idx = 0; idx < dp_stream_count &&
+				priv->num_encoders < max_encoders; idx++) {
+			info.h_tile_instance[0] = dp_intf_idx[idx];
 			encoder = sde_encoder_init(dev, &info);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
@@ -1584,6 +1623,91 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			rc = dp_mst_drm_bridge_init(display, encoder);
 			if (rc) {
 				SDE_ERROR("dp mst bridge %d init failed, %d\n",
+						i, rc);
+				sde_encoder_destroy(encoder);
+				continue;
+			}
+			priv->encoders[priv->num_encoders++] = encoder;
+		}
+
+		/* create super encoder and bridge */
+		if (dp_stream_count > 1 && priv->num_encoders < max_encoders) {
+			info.num_of_h_tiles = dp_stream_count;
+			for (idx = 0; idx < dp_stream_count; idx++)
+				info.h_tile_instance[idx] = dp_intf_idx[idx];
+
+			encoder = sde_encoder_init(dev, &info);
+			if (IS_ERR_OR_NULL(encoder)) {
+				SDE_ERROR("dp mst super enc init failed\n");
+				continue;
+			}
+
+			rc = dp_mst_drm_super_bridge_init(display, encoder);
+			if (rc) {
+				SDE_ERROR("dp mst bridge %d init failed, %d\n",
+						i, rc);
+				sde_encoder_destroy(encoder);
+				continue;
+			}
+			priv->encoders[priv->num_encoders++] = encoder;
+		}
+	}
+
+	/* create dp bond encoder */
+	for (i = 0; i < sde_kms->dp_display_count; ++i) {
+		int idx, type, h_idx;
+		int dp_bond_count;
+		struct dp_display_bond_displays bond_displays;
+		struct dp_display_info dp_info;
+
+		display = sde_kms->dp_displays[i];
+		dp_bond_count = dp_display_get_num_of_bonds(display);
+		if (!dp_bond_count)
+			continue;
+
+		for (type = 0; type < DP_BOND_MAX &&
+				priv->num_encoders < max_encoders; type++) {
+			rc = dp_display_get_bond_displays(display,
+					type, &bond_displays);
+			if (rc) {
+				SDE_ERROR("failed to get bond displays\n");
+				continue;
+			}
+
+			if (!bond_displays.dp_display_num)
+				continue;
+
+			memset(&info, 0x0, sizeof(info));
+			rc = dp_connector_get_info(NULL, &info, display);
+			if (rc) {
+				SDE_ERROR("dp get_info %d failed\n", i);
+				continue;
+			}
+
+			info.num_of_h_tiles = bond_displays.dp_display_num;
+			h_idx = 1;
+			for (idx = 0; idx < info.num_of_h_tiles; idx++) {
+				dp_display_get_info(
+						bond_displays.dp_display[idx],
+						&dp_info);
+				if (bond_displays.dp_display[idx] != display)
+					info.h_tile_instance[h_idx++] =
+							dp_info.intf_idx[0];
+				else
+					info.h_tile_instance[0] =
+							dp_info.intf_idx[0];
+			}
+
+			encoder = sde_encoder_init(dev, &info);
+			if (IS_ERR_OR_NULL(encoder)) {
+				SDE_ERROR("dp mst super enc init failed\n");
+				continue;
+			}
+
+			rc = dp_drm_bond_bridge_init(display, encoder,
+				type, &bond_displays);
+			if (rc) {
+				SDE_ERROR("bond bridge %d init failed, %d\n",
 						i, rc);
 				sde_encoder_destroy(encoder);
 				continue;
@@ -1666,7 +1790,12 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	if (!_sde_kms_get_displays(sde_kms))
 		(void)_sde_kms_setup_displays(dev, priv, sde_kms);
 
-	max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
+	/* Follow user setting if preferred crtc number is set */
+	if (!of_property_read_u32(dev->dev->of_node,
+			"qcom,sde-crtc-num-pref", &max_crtc_count))
+		max_crtc_count = min(max_crtc_count, MAX_CRTCS);
+	else
+		max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
 
 	/* Create the planes */
 	for (i = 0; i < catalog->sspp_count; i++) {
@@ -2631,6 +2760,60 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	return sde_kms->splash_data.num_splash_displays;
 }
 
+static int sde_kms_get_mixer_count(const struct msm_kms *kms,
+		const struct drm_display_mode *mode,
+		u32 max_mixer_width, u32 *num_lm)
+{
+	struct sde_kms *sde_kms;
+	s64 mode_clock_hz = 0;
+	s64 max_mdp_clock_hz = 0;
+	s64 mdp_fudge_factor = 0;
+	s64 temp = 0;
+	s64 htotal_fp = 0;
+	s64 vtotal_fp = 0;
+	s64 vrefresh_fp = 0;
+
+	if (!num_lm) {
+		SDE_ERROR("invalid num_lm pointer\n");
+		return -EINVAL;
+	}
+	*num_lm = 1;
+
+	if (!kms || !mode || !max_mixer_width) {
+		SDE_ERROR("invlaid input args");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+
+	max_mdp_clock_hz = drm_fixp_from_fraction(
+			sde_kms->perf.max_core_clk_rate, 1);
+	mdp_fudge_factor = drm_fixp_from_fraction(105, 100);
+	htotal_fp = drm_fixp_from_fraction(mode->htotal, 1);
+	vtotal_fp =  drm_fixp_from_fraction(mode->vtotal, 1);
+	vrefresh_fp =  drm_fixp_from_fraction(mode->vrefresh, 1);
+
+	temp = drm_fixp_mul(htotal_fp, vtotal_fp);
+	temp = drm_fixp_mul(temp, vrefresh_fp);
+	mode_clock_hz = drm_fixp_mul(temp, mdp_fudge_factor);
+
+	if (mode_clock_hz > max_mdp_clock_hz ||
+			mode->hdisplay > max_mixer_width) {
+		*num_lm = 2;
+		if ((mode_clock_hz >> 1) > max_mdp_clock_hz) {
+			SDE_DEBUG("[%s] clock %d exceeds max_mdp_clk %d\n",
+					mode->name, mode_clock_hz,
+					max_mdp_clock_hz);
+			return -EINVAL;
+		}
+	}
+
+	SDE_DEBUG("[%s] h=%d, v=%d, fps%d, max_mdp_pclk_hz=%llu, num_lm=%d\n",
+			mode->name, mode->htotal, mode->vtotal, mode->vrefresh,
+			sde_kms->perf.max_core_clk_rate, *num_lm);
+	return 0;
+}
+
 static void _sde_kms_null_commit(struct drm_device *dev,
 		struct drm_encoder *enc)
 {
@@ -2941,6 +3124,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_address_space = _sde_kms_get_address_space,
 	.postopen = _sde_kms_post_open,
 	.check_for_splash = sde_kms_check_for_splash,
+	.get_mixer_count = sde_kms_get_mixer_count,
 };
 
 /* the caller api needs to turn on clock before calling it */
@@ -3060,9 +3244,24 @@ static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp || !sde_kms->catalog)
 		return;
 
-	if (sde_kms->hw_mdp->ops.intf_dp_select)
+	if (sde_kms->hw_mdp->ops.intf_dp_select) {
+		struct dp_display_info dp_info = {0};
+		u32 dp_intf_sel[DP_CTRL_MAX] = {0};
+		int i;
+
+		for (i = 0; i < sde_kms->dp_display_count; i++) {
+			if (dp_display_get_info(sde_kms->dp_displays[i],
+					&dp_info))
+				continue;
+
+			if (dp_info.cell_idx < DP_CTRL_MAX)
+				dp_intf_sel[dp_info.cell_idx] =
+					dp_info.phy_idx + 1;
+		}
+
 		sde_kms->hw_mdp->ops.intf_dp_select(sde_kms->hw_mdp,
-						sde_kms->catalog);
+				dp_intf_sel);
+	}
 
 	if (sde_kms->hw_mdp->ops.reset_ubwc)
 		sde_kms->hw_mdp->ops.reset_ubwc(sde_kms->hw_mdp,

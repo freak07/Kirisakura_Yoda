@@ -109,12 +109,12 @@ static const struct parent_map disp_cc_parent_map_0[] = {
 
 static const char * const disp_cc_parent_names_0[] = {
 	"bi_tcxo",
-	"dp_link_clk_divsel_ten",
-	"dp_vco_divided_clk_src_mux",
-	"dptx1_phy_pll_link_clk",
-	"dptx1_phy_pll_vco_div_clk",
-	"dptx2_phy_pll_link_clk",
-	"dptx2_phy_pll_vco_div_clk",
+	"dp0_link_clk_divsel_ten",
+	"dp0_vco_divided_clk_src_mux",
+	"dp1_link_clk_divsel_ten",
+	"dp1_vco_divided_clk_src_mux",
+	"dp2_link_clk_divsel_ten",
+	"dp2_vco_divided_clk_src_mux",
 	"core_bi_pll_test_se",
 };
 
@@ -165,8 +165,8 @@ static const struct parent_map disp_cc_parent_map_4[] = {
 
 static const char * const disp_cc_parent_names_4[] = {
 	"bi_tcxo",
-	"edp_phy_pll_link_clk",
-	"edp_phy_pll_vco_div_clk",
+	"edp_link_clk_divsel_ten",
+	"edp_vco_divided_clk_src_mux",
 	"core_bi_pll_test_se",
 };
 
@@ -415,10 +415,10 @@ static struct clk_rcg2 disp_cc_mdss_dp_aux_clk_src = {
 };
 
 static const struct freq_tbl ftbl_disp_cc_mdss_dp_crypto1_clk_src[] = {
-	F( 108000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
-	F( 180000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
-	F( 360000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
-	F( 540000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 108000, P_DPTX1_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 180000, P_DPTX1_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 360000, P_DPTX1_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 540000, P_DPTX1_PHY_PLL_LINK_CLK,   3,   0,   0),
 	{ }
 };
 
@@ -444,12 +444,20 @@ static struct clk_rcg2 disp_cc_mdss_dp_crypto1_clk_src = {
 	},
 };
 
+static const struct freq_tbl ftbl_disp_cc_mdss_dp_crypto_clk_src[] = {
+	F( 108000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 180000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 360000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
+	F( 540000, P_DP_PHY_PLL_LINK_CLK,   3,   0,   0),
+	{ }
+};
+
 static struct clk_rcg2 disp_cc_mdss_dp_crypto_clk_src = {
 	.cmd_rcgr = 0x2194,
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = disp_cc_parent_map_0,
-	.freq_tbl = ftbl_disp_cc_mdss_dp_crypto1_clk_src,
+	.freq_tbl = ftbl_disp_cc_mdss_dp_crypto_clk_src,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "disp_cc_mdss_dp_crypto_clk_src",
 		.parent_names = disp_cc_parent_names_0,
@@ -467,10 +475,10 @@ static struct clk_rcg2 disp_cc_mdss_dp_crypto_clk_src = {
 };
 
 static const struct freq_tbl ftbl_disp_cc_mdss_dp_link1_clk_src[] = {
-	F( 162000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
-	F( 270000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
-	F( 540000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
-	F( 810000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 162000, P_DPTX1_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 270000, P_DPTX1_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 540000, P_DPTX1_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 810000, P_DPTX1_PHY_PLL_LINK_CLK,   1,   0,   0),
 	{ }
 };
 
@@ -496,12 +504,20 @@ static struct clk_rcg2 disp_cc_mdss_dp_link1_clk_src = {
 	},
 };
 
+static const struct freq_tbl ftbl_disp_cc_mdss_dp_link_clk_src[] = {
+	F( 162000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 270000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 540000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 810000, P_DP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	{ }
+};
+
 static struct clk_rcg2 disp_cc_mdss_dp_link_clk_src = {
 	.cmd_rcgr = 0x2178,
 	.mnd_width = 0,
 	.hid_width = 5,
 	.parent_map = disp_cc_parent_map_0,
-	.freq_tbl = ftbl_disp_cc_mdss_dp_link1_clk_src,
+	.freq_tbl = ftbl_disp_cc_mdss_dp_link_clk_src,
 	.clkr.hw.init = &(struct clk_init_data){
 		.name = "disp_cc_mdss_dp_link_clk_src",
 		.parent_names = disp_cc_parent_names_0,
@@ -617,10 +633,15 @@ static struct clk_rcg2 disp_cc_mdss_edp_gtc_clk_src = {
 };
 
 static const struct freq_tbl ftbl_disp_cc_mdss_edp_link_clk_src[] = {
-	F( 19200000, P_BI_TCXO, 1, 0, 0),
-	F( 270000000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
-	F( 594000000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
-	F( 810000000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 162000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 216000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 243000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 270000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 324000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 432000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 540000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 594000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
+	F( 810000, P_EDP_PHY_PLL_LINK_CLK,   1,   0,   0),
 	{ }
 };
 
@@ -639,10 +660,10 @@ static struct clk_rcg2 disp_cc_mdss_edp_link_clk_src = {
 		.vdd_class = &vdd_mm,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_MIN] = 19200000,
-			[VDD_LOWER] = 270000000,
-			[VDD_LOW_L1] = 594000000,
-			[VDD_NOMINAL] = 810000000},
+			[VDD_MIN] = 19200,
+			[VDD_LOWER] = 270000,
+			[VDD_LOW_L1] = 594000,
+			[VDD_NOMINAL] = 810000},
 	},
 };
 
@@ -660,9 +681,9 @@ static struct clk_rcg2 disp_cc_mdss_edp_pixel_clk_src = {
 		.vdd_class = &vdd_mm,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_MIN] = 19200000,
-			[VDD_LOWER] = 337500000,
-			[VDD_LOW_L1] = 675000000},
+			[VDD_MIN] = 19200,
+			[VDD_LOWER] = 337500,
+			[VDD_LOW_L1] = 675000},
 	},
 };
 
@@ -1571,11 +1592,11 @@ static void disp_cc_sm8150_fixup_sm8150v2(struct regmap *regmap)
 	disp_cc_mdss_dp_pixel_clk_src.clkr.hw.init->rate_max[VDD_NOMINAL] =
 		675000;
 	disp_cc_mdss_edp_link_clk_src.clkr.hw.init->rate_max[VDD_LOW] =
-		594000000;
+		594000;
 	disp_cc_mdss_edp_pixel_clk_src.clkr.hw.init->rate_max[VDD_LOW_L1] =
-		337500000;
+		337500;
 	disp_cc_mdss_edp_pixel_clk_src.clkr.hw.init->rate_max[VDD_NOMINAL] =
-		675000000;
+		675000;
 }
 
 static void disp_cc_sm8150_fixup_sdmshrikev2(struct regmap *regmap)
@@ -1583,11 +1604,11 @@ static void disp_cc_sm8150_fixup_sdmshrikev2(struct regmap *regmap)
 	disp_cc_sm8150_fixup_sm8150v2(regmap);
 
 	disp_cc_mdss_edp_pixel_clk_src.clkr.hw.init->rate_max[VDD_LOWER] =
-		337500000;
+		337500;
 	disp_cc_mdss_edp_pixel_clk_src.clkr.hw.init->rate_max[VDD_LOW_L1] =
-		371500000;
+		371500;
 	disp_cc_mdss_edp_pixel_clk_src.clkr.hw.init->rate_max[VDD_NOMINAL] =
-		675000000;
+		675000;
 }
 
 static int disp_cc_sm8150_fixup(struct platform_device *pdev,

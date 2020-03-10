@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -77,6 +77,7 @@ struct dp_ctrl_private {
 	bool power_on;
 	bool mst_mode;
 	bool fec_mode;
+	enum dp_phy_bond_mode phy_bond_mode;
 
 	atomic_t aborted;
 
@@ -221,9 +222,13 @@ static int dp_ctrl_update_sink_vx_px(struct dp_ctrl_private *ctrl,
 static int dp_ctrl_update_vx_px(struct dp_ctrl_private *ctrl)
 {
 	struct dp_link *link = ctrl->link;
+	bool high = false;
 
+	if (ctrl->link->link_params.bw_code == DP_LINK_BW_5_4 ||
+		 ctrl->link->link_params.bw_code == DP_LINK_BW_8_1)
+		high = true;
 	ctrl->catalog->update_vx_px(ctrl->catalog,
-		link->phy_params.v_level, link->phy_params.p_level);
+		link->phy_params.v_level, link->phy_params.p_level, high);
 
 	return dp_ctrl_update_sink_vx_px(ctrl, link->phy_params.v_level,
 		link->phy_params.p_level);
@@ -584,7 +589,12 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 	link_params = &ctrl->link->link_params;
 
 	catalog->phy_lane_cfg(catalog, ctrl->orientation,
-				link_params->lane_count);
+			link_params->lane_count);
+	/*
+	 * Make sure set_phy_bond_mode is done after phy_lane_cfg.
+	 * Otherwise the spare register would be overwritten.
+	 */
+	catalog->set_phy_bond_mode(catalog, ctrl->phy_bond_mode);
 
 	do {
 		pr_err("bw_code=%d, lane_count=%d\n",
@@ -1247,6 +1257,21 @@ static void dp_ctrl_set_mst_channel_info(struct dp_ctrl *dp_ctrl,
 	ctrl->mst_ch_info.slot_info[strm].tot_slots = tot_slots;
 }
 
+static void dp_ctrl_set_phy_bond_mode(struct dp_ctrl *dp_ctrl,
+		enum dp_phy_bond_mode mode)
+{
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl) {
+		pr_err("invalid input\n");
+		return;
+	}
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+
+	ctrl->phy_bond_mode = mode;
+}
+
 static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 {
 	struct dp_ctrl_private *ctrl;
@@ -1319,6 +1344,7 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	dp_ctrl->stream_off = dp_ctrl_stream_off;
 	dp_ctrl->stream_pre_off = dp_ctrl_stream_pre_off;
 	dp_ctrl->set_mst_channel_info = dp_ctrl_set_mst_channel_info;
+	dp_ctrl->set_phy_bond_mode = dp_ctrl_set_phy_bond_mode;
 
 	return dp_ctrl;
 error:

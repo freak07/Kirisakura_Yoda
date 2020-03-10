@@ -146,6 +146,43 @@ static u64 __maybe_unused gic_read_iar(void)
 }
 #endif
 
+/*
+ * gic_show_pending_irq - Shows the pending interrupts
+ * Note: Interrupts should be disabled on the cpu from which
+ * this is called to get accurate list of pending interrupts.
+ */
+void gic_show_pending_irqs(void)
+{
+	void __iomem *base;
+	u32 pending, enabled;
+	unsigned int j;
+
+	base = gic_data.dist_base;
+	for (j = 0; j * 32 < gic_data.irq_nr; j++) {
+		enabled = readl_relaxed(base +
+					GICD_ISENABLER + j * 4);
+		pending = readl_relaxed(base +
+					GICD_ISPENDR + j * 4);
+		pr_err("Pending and enabled irqs[%d] %x %x\n", j,
+				pending, enabled);
+	}
+}
+
+/*
+ * get_gic_highpri_irq - Returns next high priority interrupt on current CPU
+ */
+unsigned int get_gic_highpri_irq(void)
+{
+	unsigned long flags;
+	unsigned int val = 0;
+
+	local_irq_save(flags);
+	val = read_gicreg(ICC_HPPIR1_EL1);
+	local_irq_restore(flags);
+
+	return val;
+}
+
 static void gic_enable_redist(bool enable)
 {
 	void __iomem *rbase;
@@ -372,6 +409,9 @@ static void gic_hibernation_suspend(void)
 	void __iomem *base = gic_data.dist_base;
 	void __iomem *rdist_base = gic_data_rdist_sgi_base();
 
+	if ((base == NULL) || (rdist_base == NULL))
+		return;
+
 	gic_data.enabled_sgis = readl_relaxed(rdist_base + GICD_ISENABLER);
 	gic_data.pending_sgis = readl_relaxed(rdist_base + GICD_ISPENDR);
 	/* Store edge level for PPIs by reading GICR_ICFGR1 */
@@ -439,6 +479,9 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 	u32 enabled;
 	u32 pending[32];
 	void __iomem *base = gic_data.dist_base;
+
+	if (base == NULL)
+		return;
 
 	if (!msm_show_resume_irq_mask)
 		return;

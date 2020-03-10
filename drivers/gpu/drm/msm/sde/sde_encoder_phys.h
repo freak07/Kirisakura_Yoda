@@ -414,13 +414,14 @@ struct sde_encoder_phys_cmd {
  * @hw_wb:		Hardware interface to the wb registers
  * @wbdone_timeout:	Timeout value for writeback done in msec
  * @bypass_irqreg:	Bypass irq register/unregister if non-zero
- * @wbdone_complete:	for wbdone irq synchronization
  * @wb_cfg:		Writeback hardware configuration
  * @cdp_cfg:		Writeback CDP configuration
  * @wb_roi:		Writeback region-of-interest
  * @wb_fmt:		Writeback pixel format
  * @wb_fb:		Pointer to current writeback framebuffer
  * @wb_aspace:		Pointer to current writeback address space
+ * @cwb_old_fb:		Pointer to old writeback framebuffer
+ * @cwb_old_aspace:	Pointer to old writeback address space
  * @frame_count:	Counter of completed writeback operations
  * @kickoff_count:	Counter of issued writeback operations
  * @aspace:		address space identifier for non-secure/secure domain
@@ -436,13 +437,14 @@ struct sde_encoder_phys_wb {
 	struct sde_hw_wb *hw_wb;
 	u32 wbdone_timeout;
 	u32 bypass_irqreg;
-	struct completion wbdone_complete;
 	struct sde_hw_wb_cfg wb_cfg;
 	struct sde_hw_wb_cdp_cfg cdp_cfg;
 	struct sde_rect wb_roi;
 	const struct sde_format *wb_fmt;
 	struct drm_framebuffer *wb_fb;
 	struct msm_gem_address_space *wb_aspace;
+	struct drm_framebuffer *cwb_old_fb;
+	struct msm_gem_address_space *cwb_old_aspace;
 	u32 frame_count;
 	u32 kickoff_count;
 	struct msm_gem_address_space *aspace[SDE_IOMMU_DOMAIN_MAX];
@@ -585,7 +587,13 @@ static inline enum sde_3d_blend_mode sde_encoder_helper_get_3d_blend_mode(
 	topology = sde_connector_get_topology_name(phys_enc->connector);
 	if (phys_enc->split_role == ENC_ROLE_SOLO &&
 			(topology == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE ||
-			 topology == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC))
+			topology == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC))
+		return BLEND_3D_H_ROW_INT;
+
+	if (((phys_enc->split_role == ENC_ROLE_MASTER) ||
+			(phys_enc->split_role == ENC_ROLE_SLAVE)) &&
+			((topology == SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE) ||
+			(topology == SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC)))
 		return BLEND_3D_H_ROW_INT;
 
 	return BLEND_3D_NONE;

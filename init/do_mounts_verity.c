@@ -22,6 +22,23 @@
 
 #define DM_MSG_PREFIX "verity"
 
+#define VERITY_COMMANDLINE_PARAM_LENGTH 32
+#define VERITY_ROOT_HASH_PARAM_LENGTH   65
+#define VERITY_SALT_PARAM_LENGTH       65
+
+static char dm_name[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_version[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_data_device[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_hash_device[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_data_block_size[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_hash_block_size[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_number_of_data_blocks[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_hash_start_block[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_algorithm[VERITY_COMMANDLINE_PARAM_LENGTH];
+static char dm_digest[VERITY_ROOT_HASH_PARAM_LENGTH];
+static char dm_salt[VERITY_SALT_PARAM_LENGTH];
+static char dm_opt[VERITY_COMMANDLINE_PARAM_LENGTH];
+
 static void __init init_param(struct dm_ioctl *param, const char *name)
 {
 	memset(param, 0, DM_BUF_SIZE);
@@ -34,9 +51,92 @@ static void __init init_param(struct dm_ioctl *param, const char *name)
 	strlcpy(param->name, name, sizeof(param->name));
 }
 
+static int __init dm_name_param(char *line)
+{
+	strlcpy(dm_name, line, sizeof(dm_name));
+	return 1;
+}
+__setup("dmname=", dm_name_param);
+
+static int __init dm_version_param(char *line)
+{
+	strlcpy(dm_version, line, sizeof(dm_version));
+	return 1;
+}
+__setup("version=", dm_version_param);
+
+static int __init dm_data_device_param(char *line)
+{
+	strlcpy(dm_data_device, line, sizeof(dm_data_device));
+	return 1;
+}
+__setup("data_device=", dm_data_device_param);
+
+static int __init dm_hash_device_param(char *line)
+{
+	strlcpy(dm_hash_device, line, sizeof(dm_hash_device));
+	return 1;
+}
+__setup("hash_device=", dm_hash_device_param);
+
+static int __init dm_data_block_size_param(char *line)
+{
+	strlcpy(dm_data_block_size, line, sizeof(dm_data_block_size));
+	return 1;
+}
+__setup("data_block_size=", dm_data_block_size_param);
+
+static int __init dm_hash_block_size_param(char *line)
+{
+	strlcpy(dm_hash_block_size, line, sizeof(dm_hash_block_size));
+	return 1;
+}
+__setup("hash_block_size=", dm_hash_block_size_param);
+
+static int __init dm_number_of_data_blocks_param(char *line)
+{
+	strlcpy(dm_number_of_data_blocks, line, sizeof(dm_number_of_data_blocks));
+	return 1;
+}
+__setup("number_of_data_blocks=", dm_number_of_data_blocks_param);
+
+static int __init dm_hash_start_block_param(char *line)
+{
+	strlcpy(dm_hash_start_block, line, sizeof(dm_hash_start_block));
+	return 1;
+}
+__setup("hash_start_block=", dm_hash_start_block_param);
+
+static int __init dm_algorithm_param(char *line)
+{
+	strlcpy(dm_algorithm, line, sizeof(dm_algorithm));
+	return 1;
+}
+__setup("algorithm=", dm_algorithm_param);
+
+static int __init dm_digest_param(char *line)
+{
+	strlcpy(dm_digest, line, sizeof(dm_digest));
+	return 1;
+}
+__setup("digest=", dm_digest_param);
+
+static int __init dm_salt_param(char *line)
+{
+	strlcpy(dm_salt, line, sizeof(dm_salt));
+	return 1;
+}
+__setup("salt=", dm_salt_param);
+
+static int __init dm_opt_param(char *line)
+{
+	strlcpy(dm_opt, line, sizeof(dm_opt));
+	return 1;
+}
+__setup("opt=", dm_opt_param);
+
 static void __init dm_setup_drive(void)
 {
-	struct device_node *dt_node;
 	const char *name;
 	const char *version;
 	const char *data_device;
@@ -49,7 +149,6 @@ static void __init dm_setup_drive(void)
 	const char *digest;
 	const char *salt;
 	const char *opt;
-	int len;
 	unsigned long long data_blocks;
 	char dummy;
 	char *verity_params;
@@ -61,13 +160,7 @@ static void __init dm_setup_drive(void)
 
 	if (!buffer)
 		goto fail;
-	dt_node = of_find_node_by_path("/soc/dm_verity");
-	if (!dt_node) {
-		DMERR("(E) Failed to find device-tree node: /soc/dm_verity");
-		goto fail;
-	}
-
-	name = of_get_property(dt_node, "dmname", &len);
+	name = dm_name;
 	if (name == NULL)
 		goto fail;
 	DMDEBUG("(I) name=%s", name);
@@ -78,59 +171,57 @@ static void __init dm_setup_drive(void)
 		return;
 	}
 
-	version = of_get_property(dt_node, "version", &len);
+	version = dm_version;
 	if (version == NULL)
 		goto fail;
 	DMDEBUG("(I) version=%s", version);
 
-	data_device = of_get_property(dt_node, "data_device", &len);
+	data_device = dm_data_device;
 	if (data_device == NULL)
 		goto fail;
 	DMDEBUG("(I) data_device=%s", data_device);
 
-	hash_device = of_get_property(dt_node, "hash_device", &len);
+	hash_device = dm_hash_device;
 	if (hash_device == NULL)
 		goto fail;
 	DMDEBUG("(I) hash_device=%s", hash_device);
 
-	data_block_size = of_get_property(dt_node, "data_block_size", &len);
+	data_block_size = dm_data_block_size;
 	if (data_block_size == NULL)
 		goto fail;
 	DMDEBUG("(I) data_block_size=%s", data_block_size);
 
-	hash_block_size = of_get_property(dt_node, "hash_block_size", &len);
+	hash_block_size = dm_hash_block_size;
 	if (hash_block_size == NULL)
 		goto fail;
 	DMDEBUG("(I) hash_block_size=%s", hash_block_size);
 
-	number_of_data_blocks = of_get_property(dt_node,
-						"number_of_data_blocks",
-						&len);
+	number_of_data_blocks = dm_number_of_data_blocks;
 	if (number_of_data_blocks == NULL)
 		goto fail;
 	DMDEBUG("(I) number_of_data_blocks=%s", number_of_data_blocks);
 
-	hash_start_block = of_get_property(dt_node, "hash_start_block", &len);
+	hash_start_block = dm_hash_start_block;
 	if (hash_start_block == NULL)
 		goto fail;
 	DMDEBUG("(I) hash_start_block=%s", hash_start_block);
 
-	algorithm = of_get_property(dt_node, "algorithm", &len);
+	algorithm = dm_algorithm;
 	if (algorithm == NULL)
 		goto fail;
 	DMDEBUG("(I) algorithm=%s", algorithm);
 
-	digest = of_get_property(dt_node, "digest", &len);
+	digest = dm_digest;
 	if (digest == NULL)
 		goto fail;
 	DMDEBUG("(I) digest=%s", digest);
 
-	salt = of_get_property(dt_node, "salt", &len);
+	salt = dm_salt;
 	if (salt == NULL)
 		goto fail;
 	DMDEBUG("(I) salt=%s", salt);
 
-	opt = of_get_property(dt_node, "opt", &len);
+	opt = dm_opt;
 	if (opt == NULL)
 		goto fail;
 	DMDEBUG("(I) opt=%s", opt);
@@ -146,22 +237,23 @@ static void __init dm_setup_drive(void)
 	/* set tgt arguments */
 	tgt->status = 0;
 	tgt->sector_start = 0;
-	if (sscanf(number_of_data_blocks, "%llu%c", &data_blocks, &dummy) != 1)
+	if (sscanf(number_of_data_blocks, "%llu%c", &data_blocks, &dummy) != 1) {
+		DMERR("(E) invalid number of data blocks");
 		goto fail;
+	}
 
-	tgt->length = data_blocks*4096/512; /* size in sector of data dev */
+	tgt->length = data_blocks*4096/512; /* size in sector(512b) of data dev */
 	strlcpy(tgt->target_type, "verity", sizeof(tgt->target_type));
 	/* build the verity params here */
-	verity_params = buffer + dm_sz + sizeof(struct dm_target_spec);
+	verity_params = buffer + sizeof(struct dm_ioctl) + sizeof(struct dm_target_spec);
 	bufsize = DM_BUF_SIZE - (verity_params - buffer);
 
-	verity_params += snprintf(verity_params, bufsize,
-				  "%s %s %s %s %s %s %s %s %s %s 1 %s",
-				  version,
-				  data_device, hash_device,
-				  data_block_size, hash_block_size,
-				  number_of_data_blocks, hash_start_block,
-				  algorithm, digest, salt, opt);
+	verity_params += snprintf(verity_params, bufsize, "%s %s %s %s %s %s %s %s %s %s 1 %s",
+							  version,
+							  data_device, hash_device,
+							  data_block_size, hash_block_size,
+							  number_of_data_blocks, hash_start_block,
+							  algorithm, digest, salt, opt);
 
 	tgt->next = verity_params - buffer;
 	if (dm_ioctrl(DM_TABLE_LOAD_CMD, param)) {

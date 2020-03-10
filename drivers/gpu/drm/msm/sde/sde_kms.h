@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -265,6 +265,9 @@ struct sde_kms {
 	int dp_display_count;
 	void **dp_displays;
 	int dp_stream_count;
+	int dp_bond_count;
+
+	void *dp_bond_mgr;
 
 	bool has_danger_ctrl;
 
@@ -672,5 +675,13 @@ void sde_kms_timeline_status(struct drm_device *dev);
  * return: 0 on success; error code otherwise
  */
 int sde_kms_handle_recovery(struct drm_encoder *encoder);
+
+/**
+ * sde_kms_release_splash_resource - release splash resource
+ * @sde_kms: poiner to sde_kms structure
+ * @crtc: crtc that splash resource to be released from
+ */
+void sde_kms_release_splash_resource(struct sde_kms *sde_kms,
+		struct drm_crtc *crtc);
 
 #endif /* __sde_kms_H__ */

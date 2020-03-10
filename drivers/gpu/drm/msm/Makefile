@@ -7,6 +7,7 @@ ccflags-y += -Idrivers/gpu/drm/msm/sde
 ccflags-y += -Idrivers/media/platform/msm/sde/rotator
 ccflags-y += -Idrivers/gpu/drm/msm/hdmi
 ccflags-$(CONFIG_DRM_SDE_SHD) += -Idrivers/gpu/drm/msm/shd
+ccflags-$(CONFIG_DRM_SDE_SHP) += -Idrivers/gpu/drm/msm/shp
 
 msm_drm-y := \
 	dp/dp_usbpd.o \
@@ -15,13 +16,18 @@ msm_drm-y := \
 	dp/dp_catalog.o \
 	dp/dp_catalog_v420.o \
 	dp/dp_catalog_v200.o \
+	dp/dp_catalog_v500.o \
 	dp/dp_aux.o \
 	dp/dp_panel.o \
 	dp/dp_link.o \
 	dp/dp_ctrl.o \
 	dp/dp_audio.o \
 	dp/dp_debug.o \
+	dp/dp_mst_sim_helper.o \
+	dp/dp_mst_sim.o \
 	dp/dp_hpd.o \
+	dp/dp_aux_bridge.o \
+	dp/dp_bridge_hpd.o \
 	dp/dp_gpio_hpd.o \
 	dp/dp_lphw_hpd.o \
 	dp/dp_display.o \
@@ -192,6 +198,8 @@ msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 msm_drm-$(CONFIG_DRM_SDE_SHD) += shd/shd_drm.o \
 	shd/shd_hw.o \
 	shd/sde_encoder_phys_shd.o
+
+msm_drm-$(CONFIG_DRM_SDE_SHP) += shp/shp_drm.o
 
 msm_drm-$(CONFIG_DRM_MSM) += \
 	msm_atomic.o \

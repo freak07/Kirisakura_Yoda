@@ -60,6 +60,7 @@
 	aliases {
 		serial0 = &qupv3_se12_2uart;
 		hsuart0 = &qupv3_se13_4uart;
+		hsuart1 = &qupv3_se4_2uart;
 		spi0 = &qupv3_se3_spi;
 		i2c0 = &qupv3_se4_i2c;
 	};
@@ -1568,6 +1569,20 @@
 		clock-names = "xo_clk_src";
 		clocks = <&clock_rpmh RPMH_CXO_CLK>;
 		#clock-cells = <1>;
+	};
+
+	qcom_clk_led: qcom_clk_led {
+		compatible = "qcom,clk-led-pwm";
+		qcom,label = "led_clk_gp2";
+		clocks = <&clock_gcc GCC_GP2_CLK>;
+		clock-names = "src_clk";
+		assigned-clocks = <&clock_gcc GCC_GP2_CLK>;
+		assigned-clock-rates = <80000>;
+		qcom,max_duty = <53>;
+		pinctrl-names = "active", "sleep";
+		pinctrl-0 = <&qcom_clk_led_gp2_active>;
+		pinctrl-1 = <&qcom_clk_led_gp2_sleep>;
+		status = "disabled";
 	};
 
 	spmi_bus: qcom,spmi@c440000 {

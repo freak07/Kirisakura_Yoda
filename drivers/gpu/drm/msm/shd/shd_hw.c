@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -103,7 +103,6 @@ static void _sde_shd_hw_ctl_clear_blendstages_in_range(
 	u32 mixermask[4] = {0, 0, 0, 0};
 	u32 start = hw_ctl->range.start + SDE_STAGE_0;
 	u32 end = start + hw_ctl->range.size;
-	int pipes_per_stage;
 	int i, j;
 	u32 value, mask;
 	const struct ctl_sspp_stage_reg_map *sspp_cfg;
@@ -117,16 +116,14 @@ static void _sde_shd_hw_ctl_clear_blendstages_in_range(
 		mixercfg[1] | mixercfg[2] | mixercfg[3]))
 		goto end;
 
-	if (test_bit(SDE_MIXER_SOURCESPLIT,
-		&ctx->mixer_hw_caps->features))
-		pipes_per_stage = PIPES_PER_STAGE;
-	else
-		pipes_per_stage = 1;
-
 	for (i = 1; i < SSPP_MAX; i++) {
-		for (j = 0 ; j < pipes_per_stage; j++) {
+		for (j = 0 ; j < CTL_SSPP_MAX_RECTS; j++) {
 			sspp_cfg = &sspp_reg_cfg_tbl[i][j];
 			if (!sspp_cfg->bits)
+				continue;
+
+			if (hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[j] &
+					(1 << i))
 				continue;
 
 			mask = (1 << sspp_cfg->bits) - 1;
@@ -184,12 +181,13 @@ static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
 }
 
 static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx,
-	enum sde_lm lm, struct sde_hw_stage_cfg *stage_cfg)
+	enum sde_lm lm, int lm_layout, struct sde_hw_stage_cfg *stage_cfg)
 {
 	struct sde_shd_hw_ctl *hw_ctl;
 	int i, j;
 	int pipes_per_stage;
 	u32 pipe_idx, rect_idx;
+	enum sde_layout sspp_layout;
 	const struct ctl_sspp_stage_reg_map *sspp_cfg;
 	u32 mixercfg[CTL_NUM_EXT] = {CTL_MIXER_BORDER_OUT, 0, 0, 0};
 	u32 mixermask[CTL_NUM_EXT] = {0, 0, 0, 0};
@@ -215,6 +213,10 @@ static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx,
 		for (j = 0 ; j < pipes_per_stage; j++) {
 			pipe_idx = stage_cfg->stage[i][j];
 			if (!pipe_idx || pipe_idx >= SSPP_MAX)
+				continue;
+
+			sspp_layout = stage_cfg->sspp_layout[i][j];
+			if (sspp_layout && (sspp_layout != lm_layout))
 				continue;
 
 			rect_idx = (stage_cfg->multirect_index[i][j]
@@ -245,6 +247,8 @@ exit:
 	hw_ctl->mixer_cfg[lm].mixercfg_ext = mixercfg[1];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext2 = mixercfg[2];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext3 = mixercfg[3];
+	hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[0] = 0;
+	hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[1] = 0;
 }
 
 static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
@@ -256,6 +260,8 @@ static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
 	int i;
 
 	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	hw_ctl->old_mask = hw_ctl->flush_mask;
 
 	hw_ctl->flush_mask = ctx->flush.pending_flush_mask;
 
@@ -390,7 +396,7 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 }
 
 void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
-	struct sde_hw_mixer *lm_ctx[CRTC_DUAL_MIXERS], int lm_num)
+	struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num)
 {
 	struct sde_hw_blk_reg_map *c;
 	unsigned long lock_flags;
@@ -439,5 +445,21 @@ void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 
 	ctx->ops.clear_dim_layer =
 			_sde_shd_clear_dim_layer;
+}
+
+void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx,
+	enum sde_sspp sspp, int multirect_idx)
+{
+	struct sde_shd_hw_ctl *hw_ctl;
+	int i;
+
+	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	for (i = 0; i < ctx->mixer_count; i++) {
+		int lm = ctx->mixer_hw_caps[i].id;
+
+		hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[multirect_idx] |=
+			(1 << sspp);
+	}
 }
 

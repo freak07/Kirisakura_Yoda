@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,7 +44,6 @@
 #define BOOT_COMP "boot_comp"
 #define STATION_SLEEP "driver/station_sleep"
 
-static struct dp_display *g_dp_display;
 extern int dp_display_commit_cnt;
 struct completion dp_stop_comp;
 //extern struct completion usb_host_complete1;
@@ -71,6 +70,9 @@ extern uint8_t gPanelStatusForHdcpWork;
 extern bool is_in_dp_disconnect;
 
 #define HPD_STRING_SIZE 30
+#define MAX_DP_NAME_SIZE 8
+
+static struct dp_display *g_dp_display[MAX_DP_ACTIVE_DISPLAY];
 
 struct dp_hdcp_dev {
 	void *fd;
@@ -95,7 +97,7 @@ struct dp_mst {
 };
 
 struct dp_display_private {
-	char *name;
+	char name[MAX_DP_NAME_SIZE];
 	int irq;
 
 	/* state variables */
@@ -106,7 +108,9 @@ struct dp_display_private {
 	atomic_t aborted;
 
 	struct platform_device *pdev;
+	struct usbpd *pd;
 	struct device_node *aux_switch_node;
+	struct msm_dp_aux_bridge *aux_bridge;
 	struct dentry *root;
 	struct completion notification_comp;
 
@@ -133,8 +137,8 @@ struct dp_display_private {
 	struct work_struct connect_work;
 	struct work_struct attention_work;
 	struct mutex session_lock;
-	//bool suspended;	// ASUS_SZ_BSP Yadong
-	//bool hdcp_delayed_off;	// ASUS_SZ_BSP Yadong
+	bool suspended;
+	bool hdcp_delayed_off;
 	bool hdcp_abort;
 
 	u32 active_stream_cnt;
@@ -145,6 +149,12 @@ struct dp_display_private {
 	bool process_hpd_connect;
 
 	struct notifier_block usb_nb;
+
+	u32 cell_idx;
+	u32 intf_idx[DP_STREAM_MAX];
+	u32 phy_idx;
+
+	enum dp_phy_bond_mode phy_bond_mode;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -385,8 +395,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 			dp->hdcp_abort)
 		return;
 
-	// ASUS_SZ_BSP Yadong +++
-	/*if (dp->suspended || gPanelStatusForHdcpWork == 0) {
+	if (dp->suspended) {
 		pr_debug("System suspending. Delay HDCP operations\n");
 		queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
 		return;
@@ -397,8 +406,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 			dp->hdcp.ops->off(dp->hdcp.data);
 		dp_display_update_hdcp_status(dp, true);
 		dp->hdcp_delayed_off = false;
-	}*/
-	// ASUS_SZ_BSP Yadong ---
+	}
 
 	if (dp->debug->hdcp_wait_sink_sync) {
 		drm_dp_dpcd_readb(dp->aux->drm_aux, DP_SINK_STATUS,
@@ -444,7 +452,8 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 
 	dp_display_update_hdcp_status(dp, false);
 
-	if (dp->debug->force_encryption && ops && ops->force_encryption)
+	if (status->hdcp_state != HDCP_STATE_AUTHENTICATED &&
+		dp->debug->force_encryption && ops && ops->force_encryption)
 		ops->force_encryption(data, dp->debug->force_encryption);
 
 	switch (status->hdcp_state) {
@@ -490,10 +499,7 @@ static void dp_display_notify_hdcp_status_cb(void *ptr,
 
 	dp->link->hdcp_status.hdcp_state = state;
 
-    if (hdcp_retry > 0) {
-	    queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ/4);
-	    hdcp_retry--;
-	}
+	queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ/4);
 }
 
 static void dp_display_deinitialize_hdcp(struct dp_display_private *dp)
@@ -568,6 +574,27 @@ error:
 	return rc;
 }
 
+static int dp_display_get_cell_info(struct dp_display_private *dp)
+{
+	struct device_node *of_node = dp->pdev->dev.of_node;
+	int i, next = 0;
+
+	for (i = 0; i < DP_STREAM_MAX; i++) {
+		dp->intf_idx[i] = next;
+		of_property_read_u32_index(of_node,
+				"qcom,intf-index", i, &dp->intf_idx[i]);
+		next = dp->intf_idx[i] + 1;
+	}
+
+	of_property_read_u32(of_node,
+			"qcom,phy-index", &dp->phy_idx);
+
+	of_property_read_u32(of_node,
+			"cell-index", &dp->cell_idx);
+
+	return 0;
+}
+
 static int dp_display_bind(struct device *dev, struct device *master,
 		void *data)
 {
@@ -594,6 +621,8 @@ static int dp_display_bind(struct device *dev, struct device *master,
 
 	dp->dp_display.drm_dev = drm;
 	dp->priv = drm->dev_private;
+
+	dp_display_get_cell_info(dp);
 end:
 	return rc;
 }
@@ -685,10 +714,10 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 	reinit_completion(&dp->notification_comp);
 	dp_display_send_hpd_event(dp);
 
-	/*if (dp->suspended) {
+	if (dp->suspended) {
 		pr_debug("DP in suspend state. Skip wait for notification\n");
 		goto skip_wait;
-	}*/
+	}
 
 	if (hpd && dp->mst.mst_active)
 		goto skip_wait;
@@ -716,7 +745,6 @@ static void dp_display_process_mst_hpd_high(struct dp_display_private *dp,
 						bool mst_probe)
 {
 	bool is_mst_receiver;
-	struct dp_mst_hpd_info info;
 	const int clear_mstm_ctrl_timeout = 100000;
 	u8 old_mstm_ctrl;
 	int ret;
@@ -759,15 +787,22 @@ static void dp_display_process_mst_hpd_high(struct dp_display_private *dp,
 
 		dp_display_update_mst_state(dp, true);
 	} else if (dp->mst.mst_active && mst_probe) {
-		info.mst_protocol = dp->parser->has_mst_sideband;
-		info.mst_port_cnt = dp->debug->mst_port_cnt;
-		info.edid = dp->debug->get_edid(dp->debug);
-
 		if (dp->mst.cbs.hpd)
-			dp->mst.cbs.hpd(&dp->dp_display, true, &info);
+			dp->mst.cbs.hpd(&dp->dp_display, true);
 	}
 
 	DP_MST_DEBUG("mst_hpd_high. mst_active:%d\n", dp->mst.mst_active);
+}
+
+static void dp_display_change_phy_bond_mode(struct dp_display_private *dp,
+		enum dp_phy_bond_mode mode)
+{
+	if (dp->phy_bond_mode != mode)
+		pr_info("DP%d  %d -> %d\n", dp->cell_idx,
+				dp->phy_bond_mode, mode);
+
+	dp->phy_bond_mode = mode;
+	dp->ctrl->set_phy_bond_mode(dp->ctrl, mode);
 }
 
 static void dp_display_host_init(struct dp_display_private *dp)
@@ -829,14 +864,15 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	if (dp->is_connected) {
 		pr_debug("dp already connected, skipping hpd high processing");
 		mutex_unlock(&dp->session_lock);
-		rc = -EISCONN;
-		goto end;
+		return -EISCONN;
 	}
 
 	dp->is_connected = true;
 
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
 					dp->debug->max_pclk_khz);
+	dp->dp_display.force_bond_mode = dp->parser->force_bond_mode ||
+					dp->debug->force_bond_mode;
 	dp->dp_display.max_hdisplay = dp->parser->max_hdisplay;
 	dp->dp_display.max_vdisplay = dp->parser->max_vdisplay;
 
@@ -885,15 +921,12 @@ end:
 
 static void dp_display_process_mst_hpd_low(struct dp_display_private *dp)
 {
-	struct dp_mst_hpd_info info = {0};
-
 	if (dp->mst.mst_active) {
 		DP_MST_DEBUG("mst_hpd_low work\n");
 
-		if (dp->mst.cbs.hpd) {
-			info.mst_protocol = dp->parser->has_mst_sideband;
-			dp->mst.cbs.hpd(&dp->dp_display, false, &info);
-		}
+		if (dp->mst.cbs.hpd)
+			dp->mst.cbs.hpd(&dp->dp_display, false);
+
 		dp_display_update_mst_state(dp, false);
 	}
 
@@ -929,15 +962,17 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp)
 	rc = dp_display_send_hpd_notification(dp);
 
 	mutex_lock(&dp->session_lock);
-	if (!dp->active_stream_cnt)
+	/*
+	 * Can't disable the clock for the bond PLL here.
+	 * The clock tear down sequence need to be guaranteed.
+	 * Will be handled in dp_display_unprepare via bond bridge.
+	 */
+	if (!dp->active_stream_cnt && !IS_BOND_MODE(dp->phy_bond_mode))
 		dp->ctrl->off(dp->ctrl);
 	mutex_unlock(&dp->session_lock);
 
 	dp->panel->video_test = false;
 
-    // ASUS_BSP SZ +++ Lydia_Wu
-    dp->hpd->hpd_high = false;
-    hdcp_retry = 5;
 	return rc;
 }
 
@@ -957,6 +992,27 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		pr_err("no driver data found\n");
 		rc = -ENODEV;
 		goto end;
+	}
+
+	/*
+	 * When dp is connected during boot, there is a chance that
+	 * configure_cb is called before drm probe is finished and
+	 * cause host_init failure. Here we poll the value of
+	 * poll_enabled and wait until drm driver is ready.
+	 */
+	if (!dp->dp_display.drm_dev->mode_config.poll_enabled) {
+		const int poll_timeout = 10000;
+		int i;
+
+		for (i = 0; !dp->dp_display.drm_dev->mode_config.poll_enabled &&
+				i < poll_timeout; i++)
+			usleep_range(1000, 1100);
+
+		if (i == poll_timeout) {
+			pr_err("driver is not loaded\n");
+			rc = -ENODEV;
+			goto end;
+		}
 	}
 
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
@@ -1034,7 +1090,6 @@ static void dp_display_clean(struct dp_display_private *dp)
 	}
 
 	dp->power_on = false;
-	dp->is_connected = false;
 	dp->ctrl->off(dp->ctrl);
 }
 
@@ -1049,14 +1104,25 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 		dp->aux->abort(dp->aux, false);
 	}
 
+	/*
+	 * For PLL master, defer the cleanup and deinit.
+	 * The clock tear down sequence need to be guaranteed.
+	 * Will be handled in dp_display_unprepare via bond bridge.
+	 */
+	if (IS_BOND_MODE(dp->phy_bond_mode))
+		goto done;
+
 	mutex_lock(&dp->session_lock);
-	if (rc && dp->power_on)
+	if (dp->power_on)
 		dp_display_clean(dp);
+
+	dp->is_connected = false;
 
 	dp_display_host_deinit(dp);
 
 	mutex_unlock(&dp->session_lock);
 
+done:
 	return rc;
 }
 
@@ -1104,10 +1170,8 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 	}
 	/* ASUS BSP Display --- */
 
-	mutex_lock(&dp->session_lock);
 	if (dp->debug->psm_enabled && dp->core_initialized)
 		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
-	mutex_unlock(&dp->session_lock);
 
 	dp_display_disconnect_sync(dp);
 
@@ -1141,13 +1205,8 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 
 static void dp_display_mst_attention(struct dp_display_private *dp)
 {
-	struct dp_mst_hpd_info hpd_irq = {0};
-
-	if (dp->mst.mst_active && dp->mst.cbs.hpd_irq) {
-		hpd_irq.mst_hpd_sim = dp->debug->mst_hpd_sim;
-		dp->mst.cbs.hpd_irq(&dp->dp_display, &hpd_irq);
-		dp->debug->mst_hpd_sim = false;
-	}
+	if (dp->mst.mst_active && dp->mst.cbs.hpd_irq)
+		dp->mst.cbs.hpd_irq(&dp->dp_display);
 
 	DP_MST_DEBUG("mst_attention_work. mst_active:%d\n", dp->mst.mst_active);
 }
@@ -1381,9 +1440,10 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		goto error_catalog;
 	}
 
-	g_dp_display->is_mst_supported = dp->parser->has_mst;
+	dp->dp_display.is_mst_supported = dp->parser->has_mst;
+	dp->dp_display.no_mst_encoder = dp->parser->no_mst_encoder;
 
-	dp->catalog = dp_catalog_get(dev, dp->parser);
+	dp->catalog = dp_catalog_get(dev, dp->cell_idx, dp->parser);
 	if (IS_ERR(dp->catalog)) {
 		rc = PTR_ERR(dp->catalog);
 		pr_err("failed to initialize catalog, rc = %d\n", rc);
@@ -1406,7 +1466,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	}
 
 	dp->aux = dp_aux_get(dev, &dp->catalog->aux, dp->parser,
-			dp->aux_switch_node);
+			dp->aux_switch_node, dp->aux_bridge);
 	if (IS_ERR(dp->aux)) {
 		rc = PTR_ERR(dp->aux);
 		pr_err("failed to initialize aux, rc = %d\n", rc);
@@ -1474,7 +1534,8 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	cb->disconnect = dp_display_usbpd_disconnect_cb;
 	cb->attention  = dp_display_usbpd_attention_cb;
 
-	dp->hpd = dp_hpd_get(dev, dp->parser, &dp->catalog->hpd, cb);
+	dp->hpd = dp_hpd_get(dev, dp->parser, &dp->catalog->hpd, dp->pd,
+			dp->aux_bridge, cb);
 	if (IS_ERR(dp->hpd)) {
 		rc = PTR_ERR(dp->hpd);
 		pr_err("failed to initialize hpd, rc = %d\n", rc);
@@ -1493,6 +1554,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	debug_in.parser = dp->parser;
 	debug_in.ctrl = dp->ctrl;
 	debug_in.power = dp->power;
+	debug_in.index = dp->cell_idx;
 
 	dp->debug = dp_debug_get(&debug_in);
 	if (IS_ERR(dp->debug)) {
@@ -1608,6 +1670,7 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 {
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
+	bool core_initialized;
 	int rc = 0;
 
 	if (!dp_display || !panel) {
@@ -1634,12 +1697,23 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	if (!dp_display_is_ready(dp))
 		goto end;
 
+	core_initialized = dp->core_initialized;
+
 	dp_display_host_init(dp);
 
 	if (dp->debug->psm_enabled) {
 		dp->link->psm_config(dp->link, &dp->panel->link_info, false);
 		dp->debug->psm_enabled = false;
 	}
+
+	/*
+	 * when dp core is re-initialized, we need to fully parse
+	 * the sink caps to update the bw_code and lane_count
+	 */
+	if (!core_initialized)
+		dp->panel->read_sink_caps(dp->panel,
+				dp->dp_display.base_connector,
+				dp->hpd->multi_func);
 
 	/*
 	 * Execute the dp controller power on in shallow mode here.
@@ -1840,13 +1914,11 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 			status->hdcp_state != HDCP_STATE_INACTIVE) {
 		bool off = true;
 
-		// ASUS_SZ_BSP Yadong +++
-		/*if (dp->suspended) {
+		if (dp->suspended) {
 			pr_debug("Can't perform HDCP cleanup while suspended. Defer\n");
 			dp->hdcp_delayed_off = true;
 			goto clean;
-		}*/
-		// ASUS_SZ_BSP Yadong ---
+		}
 
 		if (dp->mst.mst_active) {
 			dp_display_hdcp_deregister_stream(dp,
@@ -1867,7 +1939,7 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 		}
 	}
 
-//clean:	// ASUS_SZ_BSP Yadong
+clean:
 	if (dp_panel->audio_supported)
 		dp_panel->audio->off(dp_panel->audio);
 
@@ -1996,6 +2068,14 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 
 		dp->ctrl->off(dp->ctrl);
 		dp_display_host_deinit(dp);
+	} else if (IS_BOND_MODE(dp->phy_bond_mode)) {
+		/*
+		 * For bond mode, the is_connected will be cleared
+		 * when the cable is disconnected, but the power
+		 * off sequence is skipped. So force run it here.
+		 */
+		dp->ctrl->off(dp->ctrl);
+		dp_display_host_deinit(dp);
 	}
 
 	dp->power_on = false;
@@ -2004,8 +2084,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	complete_all(&dp->notification_comp);
 
 	/* log this as it results from user action of cable dis-connection */
-	pr_info("[OK]\n");
+	pr_info("DP%d [OK]", dp->cell_idx);
 end:
+	dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
+
 	dp_panel->deinit(dp_panel, flags);
 	mutex_unlock(&dp->session_lock);
 
@@ -2027,6 +2109,11 @@ static enum drm_mode_status dp_display_validate_mode(
 	int hdis, vdis, vref, ar, _hdis, _vdis, _vref, _ar, rate;
 	struct dp_display_mode dp_mode;
 	bool dsc_en;
+	u32 pclk_khz;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	u32 num_lm = 0;
+	int rc = 0;
 
 	if (!dp_display || !mode || !panel) {
 		pr_err("invalid params\n");
@@ -2065,9 +2152,22 @@ static enum drm_mode_status dp_display_validate_mode(
 		goto end;
 	}
 
-	if (mode->clock > dp_display->max_pclk_khz) {
-		DP_MST_DEBUG("clk:%d, max:%d\n", mode->clock,
+	pclk_khz = dp_mode.timing.widebus_en ?
+		(dp_mode.timing.pixel_clk_khz >> 1) :
+		(dp_mode.timing.pixel_clk_khz);
+
+	if (pclk_khz > dp_display->max_pclk_khz) {
+		DP_MST_DEBUG("clk:%d, max:%d\n", pclk_khz,
 				dp_display->max_pclk_khz);
+		goto end;
+	}
+
+	priv = dp_display->drm_dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+	rc = msm_get_mixer_count(dp->priv, mode,
+			sde_kms->catalog->max_mixer_width, &num_lm);
+	if (rc) {
+		DP_MST_DEBUG("error getting mixer count. rc:%d\n", rc);
 		goto end;
 	}
 
@@ -2249,6 +2349,28 @@ static int dp_display_create_workqueue(struct dp_display_private *dp)
 	return 0;
 }
 
+static int dp_display_usbpd_get(struct dp_display_private *dp)
+{
+	int rc = 0;
+	char const *phandle = "qcom,dp-usbpd-detection";
+
+	dp->pd = devm_usbpd_get_by_phandle(&dp->pdev->dev, phandle);
+	if (IS_ERR(dp->pd)) {
+		rc = PTR_ERR(dp->pd);
+
+		/*
+		 * If the pd handle is not present(if return is -ENXIO) then the
+		 * platform might be using a direct hpd connection from sink.
+		 * So, return success in this case.
+		 */
+		if (rc == -ENXIO)
+			return 0;
+
+		pr_err("usbpd phandle failed (%ld)\n", PTR_ERR(dp->pd));
+	}
+	return rc;
+}
+
 static int dp_display_fsa4480_callback(struct notifier_block *self,
 		unsigned long event, void *data)
 {
@@ -2286,6 +2408,52 @@ static int dp_display_init_aux_switch(struct dp_display_private *dp)
 	}
 
 	fsa4480_unreg_notifier(&nb, dp->aux_switch_node);
+end:
+	return rc;
+}
+
+static int dp_display_bridge_mst_attention(void *dev, bool hpd, bool hpd_irq)
+{
+	struct dp_display_private *dp = dev;
+
+	if (!hpd_irq)
+		return -EINVAL;
+
+	dp_display_mst_attention(dp);
+
+	return 0;
+}
+
+static int dp_display_init_aux_bridge(struct dp_display_private *dp)
+{
+	int rc = 0;
+	const char *phandle = "qcom,dp-aux-bridge";
+	struct device_node *bridge_node;
+
+	if (!dp->pdev->dev.of_node) {
+		pr_err("cannot find dev.of_node\n");
+		rc = -ENODEV;
+		goto end;
+	}
+
+	bridge_node = of_parse_phandle(dp->pdev->dev.of_node,
+			phandle, 0);
+	if (!bridge_node)
+		goto end;
+
+	dp->aux_bridge = of_msm_dp_aux_find_bridge(bridge_node);
+	if (!dp->aux_bridge) {
+		pr_err("failed to find dp aux bridge\n");
+		rc = -EPROBE_DEFER;
+		goto end;
+	}
+
+	if (dp->aux_bridge->register_hpd &&
+			(dp->aux_bridge->flag & MSM_DP_AUX_BRIDGE_MST) &&
+			!(dp->aux_bridge->flag & MSM_DP_AUX_BRIDGE_HPD))
+		dp->aux_bridge->register_hpd(dp->aux_bridge,
+				dp_display_bridge_mst_attention, dp);
+
 end:
 	return rc;
 }
@@ -2603,7 +2771,8 @@ static int dp_display_mst_connector_update_link_info(
 	memcpy(&dp_panel->link_info, &dp->panel->link_info,
 			sizeof(dp_panel->link_info));
 
-	DP_MST_DEBUG("dp mst connector:%d link info updated\n");
+	DP_MST_DEBUG("dp mst connector: %d link info updated\n",
+			sde_conn->base.base.id);
 
 	return rc;
 }
@@ -2770,14 +2939,91 @@ static struct file_operations station_sleep_comp_ops = {
 };
 /* ASUS BSP Display --- */
 
+static int dp_display_get_display_type(struct dp_display *dp_display,
+		const char **display_type)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !display_type) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*display_type = dp->parser->display_type;
+
+	return 0;
+}
+
+static int dp_display_mst_get_fixed_topology_display_type(
+		struct dp_display *dp_display, u32 strm_id,
+		const char **display_type)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !display_type) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	if (strm_id >= DP_STREAM_MAX) {
+		pr_err("invalid stream id:%d\n", strm_id);
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*display_type = dp->parser->mst_fixed_display_type[strm_id];
+
+	return 0;
+}
+
+
+static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
+		enum dp_phy_bond_mode mode)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	mutex_lock(&dp->session_lock);
+
+	if (dp->phy_bond_mode != mode) {
+		dp_display_clean(dp);
+
+		dp_display_host_deinit(dp);
+
+		dp_display_change_phy_bond_mode(dp, mode);
+	}
+
+	mutex_unlock(&dp->session_lock);
+
+	return 0;
+}
+
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	struct dp_display *dp_display;
+	int index;
 
 	if (!pdev || !pdev->dev.of_node) {
 		pr_err("pdev not found\n");
 		rc = -ENODEV;
+		goto bail;
+	}
+
+	index = dp_display_get_num_of_displays();
+	if (index >= MAX_DP_ACTIVE_DISPLAY) {
+		pr_err("exceeds max dp count\n");
+		rc = -EINVAL;
 		goto bail;
 	}
 
@@ -2793,16 +3039,25 @@ static int dp_display_probe(struct platform_device *pdev)
 	init_completion(&prepare_comp);
 
 	dp->pdev = pdev;
-	dp->name = "drm_dp";
+	snprintf(dp->name, MAX_DP_NAME_SIZE,
+			"drm_dp%d", index);
 
 	memset(&dp->mst, 0, sizeof(dp->mst));
 	atomic_set(&dp->aborted, 0);
+
+	rc = dp_display_usbpd_get(dp);
+	if (rc)
+		goto error;
 
 	rc = dp_display_init_aux_switch(dp);
 	if (rc) {
 		rc = -EPROBE_DEFER;
 		goto error;
 	}
+
+	rc = dp_display_init_aux_bridge(dp);
+	if (rc)
+		goto error;
 
 	rc = dp_display_create_workqueue(dp);
 	if (rc) {
@@ -2812,41 +3067,46 @@ static int dp_display_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
-	g_dp_display = &dp->dp_display;
+	dp_display = &dp->dp_display;
+	g_dp_display[index] = dp_display;
 
-	g_dp_display->enable        = dp_display_enable;
-	g_dp_display->post_enable   = dp_display_post_enable;
-	g_dp_display->pre_disable   = dp_display_pre_disable;
-	g_dp_display->disable       = dp_display_disable;
-	g_dp_display->set_mode      = dp_display_set_mode;
-	g_dp_display->validate_mode = dp_display_validate_mode;
-	g_dp_display->get_modes     = dp_display_get_modes;
-	g_dp_display->prepare       = dp_display_prepare;
-	g_dp_display->unprepare     = dp_display_unprepare;
-	g_dp_display->request_irq   = dp_request_irq;
-	g_dp_display->get_debug     = dp_get_debug;
-	g_dp_display->post_open     = NULL;
-	g_dp_display->post_init     = dp_display_post_init;
-	g_dp_display->config_hdr    = dp_display_config_hdr;
-	g_dp_display->mst_install   = dp_display_mst_install;
-	g_dp_display->mst_uninstall = dp_display_mst_uninstall;
-	g_dp_display->mst_connector_install = dp_display_mst_connector_install;
-	g_dp_display->mst_connector_uninstall =
+	dp_display->enable        = dp_display_enable;
+	dp_display->post_enable   = dp_display_post_enable;
+	dp_display->pre_disable   = dp_display_pre_disable;
+	dp_display->disable       = dp_display_disable;
+	dp_display->set_mode      = dp_display_set_mode;
+	dp_display->validate_mode = dp_display_validate_mode;
+	dp_display->get_modes     = dp_display_get_modes;
+	dp_display->prepare       = dp_display_prepare;
+	dp_display->unprepare     = dp_display_unprepare;
+	dp_display->request_irq   = dp_request_irq;
+	dp_display->get_debug     = dp_get_debug;
+	dp_display->post_open     = NULL;
+	dp_display->post_init     = dp_display_post_init;
+	dp_display->config_hdr    = dp_display_config_hdr;
+	dp_display->mst_install   = dp_display_mst_install;
+	dp_display->mst_uninstall = dp_display_mst_uninstall;
+	dp_display->mst_connector_install = dp_display_mst_connector_install;
+	dp_display->mst_connector_uninstall =
 					dp_display_mst_connector_uninstall;
-	g_dp_display->mst_connector_update_edid =
+	dp_display->mst_connector_update_edid =
 					dp_display_mst_connector_update_edid;
-	g_dp_display->mst_connector_update_link_info =
+	dp_display->mst_connector_update_link_info =
 				dp_display_mst_connector_update_link_info;
-	g_dp_display->get_mst_caps = dp_display_get_mst_caps;
-	g_dp_display->set_stream_info = dp_display_set_stream_info;
-	g_dp_display->update_pps = dp_display_update_pps;
-	g_dp_display->convert_to_dp_mode = dp_display_convert_to_dp_mode;
-	g_dp_display->mst_get_connector_info =
+	dp_display->get_mst_caps = dp_display_get_mst_caps;
+	dp_display->set_stream_info = dp_display_set_stream_info;
+	dp_display->update_pps = dp_display_update_pps;
+	dp_display->convert_to_dp_mode = dp_display_convert_to_dp_mode;
+	dp_display->mst_get_connector_info =
 					dp_display_mst_get_connector_info;
-	g_dp_display->mst_get_fixed_topology_port =
+	dp_display->mst_get_fixed_topology_port =
 					dp_display_mst_get_fixed_topology_port;
-	g_dp_display->wakeup_phy_layer =
+	dp_display->wakeup_phy_layer =
 					dp_display_wakeup_phy_layer;
+	dp_display->get_display_type = dp_display_get_display_type;
+	dp_display->mst_get_fixed_topology_display_type =
+				dp_display_mst_get_fixed_topology_display_type;
+	dp_display->set_phy_bond_mode = dp_display_set_phy_bond_mode;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {
@@ -2867,31 +3127,143 @@ bail:
 
 int dp_display_get_displays(void **displays, int count)
 {
+	int i;
+
 	if (!displays) {
 		pr_err("invalid data\n");
 		return -EINVAL;
 	}
 
-	if (count != 1) {
-		pr_err("invalid number of displays\n");
-		return -EINVAL;
+	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY && i < count; i++) {
+		struct dp_display *display = g_dp_display[i];
+
+		if (!display)
+			break;
+
+		displays[i] = g_dp_display[i];
 	}
 
-	displays[0] = g_dp_display;
 	return count;
 }
 
 int dp_display_get_num_of_displays(void)
 {
-	if (!g_dp_display)
-		return 0;
+	int i;
 
-	return 1;
+	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
+		struct dp_display *display = g_dp_display[i];
+
+		if (!display)
+			break;
+	}
+
+	return i;
 }
 
-int dp_display_get_num_of_streams(void)
+int dp_display_get_num_of_streams(void *dp_display)
 {
-	return DP_STREAM_MAX;
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		pr_debug("dp display not initialized\n");
+		return 0;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (!dp->parser)
+		return DP_STREAM_MAX;
+
+	return (dp->parser->has_mst && !dp->parser->no_mst_encoder) ?
+			DP_STREAM_MAX : 0;
+}
+
+int dp_display_get_num_of_bonds(void *dp_display)
+{
+	struct dp_display_private *dp;
+	int i, cnt = 0;
+
+	if (!dp_display) {
+		pr_debug("dp display not initialized\n");
+		return 0;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (!dp->parser)
+		return dp->cell_idx ? 0 : DP_BOND_MAX;
+
+	for (i = 0; i < DP_BOND_MAX; i++) {
+		if (dp->parser->bond_cfg[i].enable)
+			cnt++;
+	}
+
+	return cnt;
+}
+
+int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info)
+{
+	struct dp_display_private *dp;
+	int i;
+
+	if (!dp_display) {
+		pr_debug("dp display not initialized\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	dp_info->cell_idx = dp->cell_idx;
+	for (i = 0; i < DP_STREAM_MAX; i++)
+		dp_info->intf_idx[i] = dp->intf_idx[i];
+	dp_info->phy_idx = dp->phy_idx;
+
+	return 0;
+}
+
+int dp_display_get_bond_displays(void *dp_display, enum dp_bond_type type,
+		struct dp_display_bond_displays *dp_bond_info)
+{
+	struct dp_display_private *dp;
+	int i, j;
+
+	if (!dp_display) {
+		pr_debug("dp display not initialized\n");
+		return -EINVAL;
+	}
+
+	if (type < 0 || type >= DP_BOND_MAX) {
+		pr_debug("invalid bond type\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	memset(dp_bond_info, 0, sizeof(*dp_bond_info));
+
+	if (!dp->parser->bond_cfg[type].enable)
+		return 0;
+
+	dp_bond_info->dp_display_num = type + 2;
+
+	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
+		struct dp_display *display = g_dp_display[i];
+		struct dp_display_private *dp_disp;
+
+		if (!display)
+			break;
+
+		dp_disp = container_of(display,
+				struct dp_display_private, dp_display);
+
+		for (j = 0; j < dp_bond_info->dp_display_num; j++) {
+			if (dp->parser->bond_cfg[type].ctrl[j] ==
+					dp_disp->cell_idx) {
+				dp_bond_info->dp_display[j] = display;
+				break;
+			}
+		}
+	}
+
+	return 0;
 }
 
 static void dp_display_set_mst_state(void *dp_display,
@@ -2899,14 +3271,9 @@ static void dp_display_set_mst_state(void *dp_display,
 {
 	struct dp_display_private *dp;
 
-	if (!g_dp_display) {
-		pr_debug("dp display not initialized\n");
-		return;
-	}
-
-	dp = container_of(g_dp_display, struct dp_display_private, dp_display);
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
 	if (dp->mst.mst_active && dp->mst.cbs.set_drv_state)
-		dp->mst.cbs.set_drv_state(g_dp_display, mst_state);
+		dp->mst.cbs.set_drv_state(dp_display, mst_state);
 }
 
 static int dp_display_remove(struct platform_device *pdev)
@@ -2931,14 +3298,16 @@ static int dp_display_remove(struct platform_device *pdev)
 
 static int dp_pm_prepare(struct device *dev)
 {
-	// ASUS_SZ_BSP Yadong +++
-	/*struct dp_display_private *dp = container_of(g_dp_display,
-			struct dp_display_private, dp_display);
+	struct dp_display_private *dp;
 
-	dp->suspended = true;*/
-	// ASUS_SZ_BSP Yadong ---
+	if (!dev)
+		return -EINVAL;
 
-	dp_display_set_mst_state(g_dp_display, PM_SUSPEND);
+	dp = dev_get_drvdata(dev);
+
+	dp->suspended = true;
+
+	dp_display_set_mst_state(&dp->dp_display, PM_SUSPEND);
 
 	/*
 	 * There are a few instances where the DP is hotplugged when the device
@@ -2948,24 +3317,26 @@ static int dp_pm_prepare(struct device *dev)
 	 * access error. So, abort aux transactions when such a situation
 	 * arises i.e. when DP is connected but not powered on yet.
 	 */
-	/*if (dp->is_connected && !dp->power_on) {
+	if (dp->is_connected && !dp->power_on) {
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
 	}
-	*/
+
 	return 0;
 }
 
 static void dp_pm_complete(struct device *dev)
 {
-	// ASUS_SZ_BSP Yadong +++
-	/*struct dp_display_private *dp = container_of(g_dp_display,
-			struct dp_display_private, dp_display);*/
-	// ASUS_SZ_BSP Yadong ---
+	struct dp_display_private *dp;
 
-	dp_display_set_mst_state(g_dp_display, PM_DEFAULT);
+	if (!dev)
+		return;
 
-	//dp->suspended = false;	// ASUS_SZ_BSP Yadong
+	dp = dev_get_drvdata(dev);
+
+	dp_display_set_mst_state(&dp->dp_display, PM_DEFAULT);
+
+	dp->suspended = false;
 
 	/*
 	 * There are multiple PM suspend entry and exits observed before
@@ -2975,10 +3346,10 @@ static void dp_pm_complete(struct device *dev)
 	 * to reset the abort flags for ctrl and aux incase the DP is connected
 	 * but not powered on. So, resetting the abort flags for aux and ctrl.
 	 */
-	/*if (dp->is_connected && !dp->power_on) {
+	if (dp->is_connected && !dp->power_on) {
 		dp->aux->abort(dp->aux, true);
 		dp->ctrl->abort(dp->ctrl, true);
-	}*/
+	}
 }
 
 static const struct dev_pm_ops dp_pm_ops = {
