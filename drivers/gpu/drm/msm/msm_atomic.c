@@ -27,6 +27,11 @@
 
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
+/* ASUS BSP Display +++ */
+extern int lastFps;
+extern bool changeFps;
+/* ASUS BSP Display --- */
+
 struct msm_commit {
 	struct drm_device *dev;
 	struct drm_atomic_state *state;
@@ -432,6 +437,7 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 	int bridge_enable_count = 0;
 	int i, blank;
 	bool splash = false;
+	int type = 0; // ASUS BSP Display +++
 
 	SDE_ATRACE_BEGIN("msm_enable");
 	for_each_oldnew_crtc_in_state(old_state, crtc, old_crtc_state,
@@ -475,6 +481,20 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		if (!new_conn_state->best_encoder)
 			continue;
 
+		/* ASUS BSP Display +++ */
+		if (changeFps) {
+			if (lastFps >= 60 && lastFps < 90)
+				type = 2;
+			else if (lastFps >= 90 && lastFps < 120)
+				type = 1;
+			else
+				type = 0;
+
+			drm_bridge_asusFps(connector->state->best_encoder->bridge, type);
+			changeFps = false;
+		}
+		/* ASUS BSP Display --- */
+		
 		if (!new_conn_state->crtc->state->active ||
 				!drm_atomic_crtc_needs_modeset(
 					new_conn_state->crtc->state))

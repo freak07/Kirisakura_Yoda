@@ -1287,5 +1287,7 @@ config TOUCHSCREEN_SYNAPTICS_TCM
 	  If unsure, say N.
 
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
+source "drivers/input/touchscreen/goodix_gtx8/Kconfig"
+source "drivers/input/touchscreen/station_goodix_gtx8/Kconfig"
 
 endif

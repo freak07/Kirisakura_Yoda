@@ -116,6 +116,10 @@ void power_supply_changed(struct power_supply *psy)
 	unsigned long flags;
 
 	dev_dbg(&psy->dev, "%s\n", __func__);
+	if(psy->desc->name)
+		pr_info("[PSY] %s, psy_name:%s\n", __func__, (char*)(psy->desc->name));
+	else
+		pr_info("[PSY] %s, no name\n", __func__);
 
 	spin_lock_irqsave(&psy->changed_lock, flags);
 	psy->changed = true;

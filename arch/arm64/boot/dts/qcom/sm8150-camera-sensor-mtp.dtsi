@@ -118,7 +118,7 @@
 		regulator-max-microvolt = <3300000>;
 		regulator-enable-ramp-delay = <135>;
 		enable-active-high;
-		gpio = <&tlmm 24 0>;
+		//gpio = <&tlmm 24 0>;
 		vin-supply = <&pm8150l_bob>;
 	};
 };

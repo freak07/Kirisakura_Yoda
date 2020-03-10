@@ -56,6 +56,17 @@ static struct thermal_governor *def_governor;
 
 static struct workqueue_struct *thermal_passive_wq;
 
+/* Clay add virtual temp */
+
+long G_virtual_therm_temp = 0;
+long G_virtual_therm_temp_prev = 0;
+long G_pa_therm2_temp = 0;
+long G_wp_therm_temp = 0;
+long G_skin_therm_temp = 0;
+long G_skin_msm_therm_temp = 0;
+long G_conn_therm_temp = 0;
+
+
 /*
  * Governor section: set of functions to handle thermal governors
  *
@@ -302,14 +313,15 @@ static void thermal_zone_device_set_polling(struct workqueue_struct *queue,
 					    struct thermal_zone_device *tz,
 					    int delay)
 {
-	if (delay > 1000)
+	if (delay > 1000){
 		mod_delayed_work(queue, &tz->poll_queue,
 				 round_jiffies(msecs_to_jiffies(delay)));
-	else if (delay)
+	} else if (delay) {
 		mod_delayed_work(queue, &tz->poll_queue,
 				 msecs_to_jiffies(delay));
-	else
+	} else {
 		cancel_delayed_work(&tz->poll_queue);
+	}
 }
 
 static void monitor_thermal_zone(struct thermal_zone_device *tz)
@@ -448,6 +460,19 @@ static void store_temperature(struct thermal_zone_device *tz, int temp)
 	tz->temperature = temp;
 	mutex_unlock(&tz->lock);
 
+
+	if (tz->id==72)
+		G_wp_therm_temp = temp;
+	
+	if (tz->id==78) /* pa-therm2 */
+		G_pa_therm2_temp = temp;
+	
+	if (tz->id==74) /* skin-therm */
+		G_skin_therm_temp = temp;
+	
+	if (tz->id==77) /* skin-msm-therm */
+		G_skin_msm_therm_temp = temp;
+	
 	trace_thermal_temperature(tz);
 	if (tz->last_temperature == THERMAL_TEMP_INVALID ||
 		tz->last_temperature == THERMAL_TEMP_INVALID_LOW)

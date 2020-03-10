@@ -82,6 +82,14 @@ enum print_reason {
 #define DETACH_DETECT_VOTER		"DETACH_DETECT_VOTER"
 #define CC_MODE_VOTER			"CC_MODE_VOTER"
 #define MAIN_FCC_VOTER			"MAIN_FCC_VOTER"
+// ASUS BSP ADD +++
+#define ASUS_CHG_VOTER			"ASUS_CHG_VOTER"
+#define ASUS_ICL_VOTER			"ASUS_ICL_VOTER"
+#define ASUS_ATM_VOTER			"ASUS_ATM_VOTER"
+#ifdef CONFIG_USBPD_PHY_QCOM
+#define DIRECT_CHARGE_VOTER		"DIRECT_CHARGE_VOTER"
+#define PD_DIRECT_CHARGE_VOTER		"PD_DIRECT_CHARGE_VOTER"
+#endif
 
 #define BOOST_BACK_STORM_COUNT	3
 #define WEAK_CHG_STORM_COUNT	8
@@ -258,6 +266,12 @@ static const unsigned int smblib_extcon_cable[] = {
 	EXTCON_NONE,
 };
 
+// ASUS BSP +++
+static const unsigned int asus_extcon_cable[] = {
+	EXTCON_NONE,
+};
+// ASUS BSP ---
+
 enum lpd_reason {
 	LPD_NONE,
 	LPD_MOISTURE_DETECTED,
@@ -390,6 +404,7 @@ struct smb_charger {
 	struct mutex		ps_change_lock;
 	struct mutex		dr_lock;
 	struct mutex		irq_status_lock;
+	struct mutex		dpdm_lock;
 
 	/* power supplies */
 	struct power_supply		*batt_psy;
@@ -400,6 +415,7 @@ struct smb_charger {
 	struct power_supply		*usb_port_psy;
 	struct power_supply		*wls_psy;
 	struct power_supply		*cp_psy;
+	struct power_supply		*pca_psy;	// ASUS BSP +++
 	enum power_supply_type		real_charger_type;
 
 	/* dual role class */
@@ -418,6 +434,7 @@ struct smb_charger {
 	struct smb_regulator	*vbus_vreg;
 	struct smb_regulator	*vconn_vreg;
 	struct regulator	*dpdm_reg;
+	struct regulator	*dpdm2_reg;// This is added for USB2 controller
 
 	/* votables */
 	struct votable		*dc_suspend_votable;
@@ -454,6 +471,26 @@ struct smb_charger {
 	struct delayed_work	usbov_dbc_work;
 	struct delayed_work	role_reversal_check;
 	struct delayed_work	pr_swap_detach_work;
+
+	/* asus work +++ */
+	struct delayed_work	asus_mux_setting_1_work;
+	struct delayed_work asus_write_mux_setting_3;
+	struct delayed_work	asus_chg_flow_work;
+	struct delayed_work	asus_set_flow_flag_work;
+	struct delayed_work asus_cable_check_work;
+	struct delayed_work asus_adapter_adc_work;
+	struct delayed_work asus_min_monitor_work;
+	struct delayed_work asus_slow_insertion_work;
+	struct delayed_work asus_cos_pd_hard_reset_work;
+	struct delayed_work asus_thermal_btm_work;
+	struct delayed_work asus_thermal_pogo_work;
+	struct delayed_work asus_batt_RTC_work;
+	struct delayed_work asus_thermal_accy_work;
+	struct delayed_work asus_call_rt_reset_work;
+	struct delayed_work asus_30W_Dual_chg_work;
+	struct delayed_work asus_enable_inov_work;
+	struct delayed_work asus_set_usb_extcon_work;
+	/* asus work --- */
 
 	struct alarm		lpd_recheck_timer;
 	struct alarm		moisture_protection_alarm;
@@ -546,6 +583,11 @@ struct smb_charger {
 	int			usbin_forced_max_uv;
 	int			init_thermal_ua;
 	u32			comp_clamp_level;
+#ifdef CONFIG_USBPD_PHY_QCOM
+	bool		micro_usb_mode;
+#endif
+	/* ASUS Add PD2 ACTIVE +++ */
+	int 		pd2_active;
 
 	/* workaround flag */
 	u32			wa_flags;
@@ -556,6 +598,10 @@ struct smb_charger {
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
+	/* asus extcon */
+	struct extcon_dev	*thermal_extcon;
+	struct extcon_dev	*quickchg_extcon;
+	struct extcon_dev	*pmsp_extcon;
 
 	/* battery profile */
 	int			batt_profile_fcc_ua;
@@ -578,6 +624,56 @@ struct smb_charger {
 	/* wireless */
 	int			wireless_vout;
 };
+
+//ASUS BSP : Add gpio control struct +++
+struct gpio_control {
+	u32 POGO_OTG_EN;		//soc_31
+	u32 BTM_OTG_EN;			//soc_32
+	u32 BTM_OVP_ACOK;		//soc_72
+	u32 POGO_OVP_ACOK;		//soc_152
+	u32 ADC_MUX_INT_N;		//soc_120(ER)
+	u32 PW_ADC_EN;			//soc_102(ER)
+	u32 USB2_MUX1_EN;		//pm8150_gpio9
+	u32 PMI_MUX_EN;			//soc_97
+	u32 PCA9468_EN;			//pm8150b_gpio5
+	u32 POGO_TEMP_INT;		//soc_133(EVB) soc_88(ER)
+};
+//ASUS BSP : Add gpio control struct ---
+
+//ASUS BSP : Add for ROG ACCY +++
+enum POGO_ID {
+	NO_INSERT = 0,
+	INBOX,
+	STATION,
+	DT,
+	PCIE,
+	ERROR_1,
+	OTHER,
+	STATION_1ST_UNLOCK = 100,
+	STATION_UNLOCK = 200,
+};
+
+static char *pogo_id_str[] = {
+	[NO_INSERT] = 			"NO_INSERT",
+	[INBOX] = 				"INBOX",
+	[STATION] = 			"STATION",
+	[DT] = 					"DT",
+	[PCIE] = 				"PCIE",
+	[ERROR_1] = 			"ERROR",
+	[OTHER] = 				"OTHERS",
+	[STATION_1ST_UNLOCK] = 	"STATION_1ST_UNLOCK",
+	[STATION_UNLOCK] = 		"STATION_UNLOCK"
+};
+//ASUS BSP : Add for ROG ACCY ---
+
+//ASUS BSP : Add for QC battery status +++
+enum QC_BATT_STATUS {
+	NORMAL = 0,
+	QC,
+	QC_PLUS,
+	NXP,
+};
+//ASUS BSP : Add for QC battery status ---
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
 int smblib_masked_write(struct smb_charger *chg, u16 addr, u8 mask, u8 val);
@@ -779,6 +875,18 @@ void smblib_apsd_enable(struct smb_charger *chg, bool enable);
 int smblib_force_vbus_voltage(struct smb_charger *chg, u8 val);
 int smblib_get_irq_status(struct smb_charger *chg,
 				union power_supply_propval *val);
+#ifdef CONFIG_USBPD_PHY_QCOM
+int smblib_set_prop_usb_current_max(struct smb_charger *chg,
+				    const union power_supply_propval *val);
+int smblib_get_prop_charging_enabled(struct smb_charger *chg,
+				union power_supply_propval *val);
+int smblib_set_prop_charging_enabled(struct smb_charger *chg,
+				const union power_supply_propval *val);
+#endif
+/* ASUS Add POWER SUPPLY PROPERTY +++ */
+int smblib_set_prop_pd2_active(struct smb_charger *chg,
+				const union power_supply_propval *val);
+/* ASUS Add POWER SUPPLY PROPERTY --- */
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);

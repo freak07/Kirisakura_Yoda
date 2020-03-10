@@ -732,8 +732,10 @@ static int snd_ctl_card_info(struct snd_card *card, struct snd_ctl_file * ctl,
 	struct snd_ctl_card_info *info;
 
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
-	if (! info)
+	if (! info) {
+		pr_err("%s: no memory", __func__);
 		return -ENOMEM;
+	}
 	down_read(&snd_ioctl_rwsem);
 	info->card = card->number;
 	strlcpy(info->id, card->id, sizeof(info->id));
@@ -745,6 +747,7 @@ static int snd_ctl_card_info(struct snd_card *card, struct snd_ctl_file * ctl,
 	up_read(&snd_ioctl_rwsem);
 	if (copy_to_user(arg, info, sizeof(struct snd_ctl_card_info))) {
 		kfree(info);
+		pr_err("%s: copy_to_user failed", __func__);
 		return -EFAULT;
 	}
 	kfree(info);
@@ -760,8 +763,10 @@ static int snd_ctl_elem_list(struct snd_card *card,
 	unsigned int offset, space, jidx;
 	int err = 0;
 	
-	if (copy_from_user(&list, _list, sizeof(list)))
+	if (copy_from_user(&list, _list, sizeof(list))) {
+		pr_err("%s: copy_from_user failed", __func__);
 		return -EFAULT;
+	}
 	offset = list.offset;
 	space = list.space;
 
@@ -792,6 +797,8 @@ static int snd_ctl_elem_list(struct snd_card *card,
 	up_read(&card->controls_rwsem);
 	if (!err && copy_to_user(_list, &list, sizeof(list)))
 		err = -EFAULT;
+	if (err)
+		pr_err("%s: err %d", __func__, err);
 	return err;
 }
 
@@ -1909,6 +1916,7 @@ int snd_ctl_create(struct snd_card *card)
 	err = snd_device_new(card, SNDRV_DEV_CONTROL, card, &ops);
 	if (err < 0)
 		put_device(&card->ctl_dev);
+	pr_err("%s: create device controlC%d, ret %d", __func__, card->number, err);
 	return err;
 }
 

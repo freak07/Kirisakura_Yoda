@@ -398,6 +398,41 @@ static int gic_suspend(void)
 	return 0;
 }
 
+/*AS-K Log Modem Wake Up QMI Info+*/
+static unsigned int modem_resume_irq_num = 0;
+void modem_resume_irq_num_function(int modem_resume_irq) {
+	if (modem_resume_irq >= 0) {
+		modem_resume_irq_num = (unsigned int)modem_resume_irq;
+	}
+}
+EXPORT_SYMBOL(modem_resume_irq_num_function);
+
+static int modem_resume_irq_flag = 0;
+int modem_resume_irq_flag_function(void) {
+	if( modem_resume_irq_flag == 1 ) {
+		modem_resume_irq_flag = 0;
+		return 1;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(modem_resume_irq_flag_function);
+/*AS-K Log Modem Wake Up QMI Info-*/
+
+//ASUS_BSP +++ Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 484
+static int rmnet_irq_flag_rx = 0;
+int rmnet_irq_flag_function_rx(void)
+{
+    if( rmnet_irq_flag_rx == 1 ) {
+        rmnet_irq_flag_rx = 0;
+        return 1;
+    }
+
+    return 0;
+}
+EXPORT_SYMBOL(rmnet_irq_flag_function_rx);
+
+//ASUS_BSP --- Johnny[Qcom][PS][][ADD]Print first IP address log when IRQ 484
+
 static void gic_show_resume_irq(struct gic_chip_data *gic)
 {
 	unsigned int i;
@@ -427,6 +462,20 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 			name = desc->action->name;
 
 		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
+
+		/*AS-K Log Modem Wake Up QMI Info+*/
+		if(irq == modem_resume_irq_num) {
+			modem_resume_irq_flag = 1;
+		}
+		/*AS-K Log Modem Wake Up QMI Info-*/
+
+                //ASUS_BSP +++ Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
+                //printk("%s: [data] yujoe test i = %d \n", __func__,i);
+                if(i == 343){
+                    rmnet_irq_flag_rx = 1;
+                    //printk("%s: [data] Johnny 57 \n", __func__);
+                }
+                //ASUS_BSP --- Johnny [Qcom][PS][][ADD]Print first IP address log when IRQ 57
 	}
 }
 

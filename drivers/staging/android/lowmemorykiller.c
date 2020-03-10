@@ -117,7 +117,7 @@ enum {
 	ADAPTIVE_LMK_ENABLED,
 	ADAPTIVE_LMK_WAS_ENABLED,
 };
-
+unsigned long time_out;
 /* User knob to enable/disable adaptive lmk feature */
 static int enable_adaptive_lmk = ADAPTIVE_LMK_DISABLED;
 module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int, 0644);
@@ -434,6 +434,12 @@ void tune_lmk_param(int *other_free, int *other_file, struct shrink_control *sc)
 	}
 }
 
+#define ASUS_MEMORY_DEBUG_MAXLEN    (128)
+#define ASUS_MEMORY_DEBUG_MAXCOUNT  (256)
+#define MINFREE_TO_PRINT_LOG 		(200)
+#define HEAD_LINE "PID       RSS    oom_adj       cmdline\n"
+char meminfo_str[ASUS_MEMORY_DEBUG_MAXCOUNT][ASUS_MEMORY_DEBUG_MAXLEN];
+
 /*
  * Return the percent of memory which gfp_mask is allowed to allocate from.
  * CMA memory is assumed to be a small percent and is not considered.
@@ -462,25 +468,29 @@ static void mark_lmk_victim(struct task_struct *tsk)
 		set_bit(MMF_OOM_VICTIM, &mm->flags);
 	}
 }
-
+#define MAX_KILL_TASK 2
 static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
-	struct task_struct *selected = NULL;
+	//struct task_struct *selected = NULL;
+	struct task_struct *asus_selected[MAX_KILL_TASK] = {NULL,NULL};
 	unsigned long rem = 0;
 	int tasksize;
 	int i;
+	int meminfo_str_index = 0;
 	int ret = 0;
 	short min_score_adj = OOM_SCORE_ADJ_MAX + 1;
 	int minfree = 0;
 	int scale_percent;
-	int selected_tasksize = 0;
+	//int selected_tasksize = 0;
+	int asus_selected_tasksize[MAX_KILL_TASK] = {0,0};
+	int asus_selected_oom_score[MAX_KILL_TASK] = {0,0};
 	short selected_oom_score_adj;
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free;
 	int other_file;
 	bool lock_required = true;
-
+	int selected_index  = 0;
 	other_free = global_zone_page_state(NR_FREE_PAGES) - totalreserve_pages;
 
 	if (global_node_page_state(NR_SHMEM) + total_swapcache_pages() +
@@ -578,56 +588,109 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		}
 
 		oom_score_adj = p->signal->oom_score_adj;
-		if (oom_score_adj < min_score_adj) {
+		//save the memory inforation if the oomadj is lower than MINFREE_TO_PRINT_LOG(300) for showing
+		if(min_score_adj <= MINFREE_TO_PRINT_LOG)
+		{
+			tasksize = get_mm_rss(p->mm);
+			if(meminfo_str_index >= ASUS_MEMORY_DEBUG_MAXCOUNT )
+				meminfo_str_index = ASUS_MEMORY_DEBUG_MAXCOUNT - 1;
+			snprintf(meminfo_str[meminfo_str_index++], ASUS_MEMORY_DEBUG_MAXLEN, "%6d  %8ldkB %8d %s\n", p->pid, tasksize * (long)(PAGE_SIZE / 1024),oom_score_adj, p->comm);
+
+		}
+
+
+		if (oom_score_adj < min_score_adj && 
+			strstr(p->comm,"youtube")== NULL ) { 
 			task_unlock(p);
 			continue;
 		}
 		tasksize = get_mm_rss(p->mm);
 		task_unlock(p);
-		if (tasksize <= 0)
-			continue;
-		if (selected) {
-			if (oom_score_adj < selected_oom_score_adj)
-				continue;
-			if (oom_score_adj == selected_oom_score_adj &&
-			    tasksize <= selected_tasksize)
+		
+		if(strstr(p->comm,"youtube")!= NULL ){
+			if( oom_score_adj > 900)
+				tasksize = INT_MAX ;
+			else
 				continue;
 		}
-		selected = p;
-		selected_tasksize = tasksize;
-		selected_oom_score_adj = oom_score_adj;
-		lowmem_print(3, "select '%s' (%d), adj %hd, size %d, to kill\n",
-			     p->comm, p->pid, oom_score_adj, tasksize);
+
+		
+		if (tasksize <= 0)
+			continue;
+		selected_index = 0;
+	
+		while(selected_index < MAX_KILL_TASK ){
+			if (asus_selected[selected_index] == NULL) {
+				asus_selected[selected_index] = p;
+				asus_selected_tasksize[selected_index] = tasksize;
+				asus_selected_oom_score[selected_index] = oom_score_adj;
+				selected_oom_score_adj = oom_score_adj;
+				break;
+			}
+			selected_index++;
+		}
+		if(selected_index < MAX_KILL_TASK)
+			continue; 
+		selected_index = 0;
+		while(selected_index < MAX_KILL_TASK ){
+			if (asus_selected[selected_index]) {
+				if (oom_score_adj < asus_selected_oom_score[selected_index]){
+						selected_index++;
+						continue;
+					}
+				if (oom_score_adj == asus_selected_oom_score[selected_index] &&
+				    tasksize <= asus_selected_tasksize[selected_index]){
+					    selected_index++;
+						continue;
+					}
+			}
+			asus_selected[selected_index] = p;
+			asus_selected_tasksize[selected_index] = tasksize;
+			asus_selected_oom_score[selected_index] = oom_score_adj;
+			selected_oom_score_adj = oom_score_adj;
+			lowmem_print(3,"lowmem select '%s' (%d), adj %hd, size %d, to kill\n",
+				     p->comm, p->pid, oom_score_adj, tasksize);
+			break;
+		}
 	}
-	if (selected) {
+	
+	selected_index = 0;
+	while (selected_index < MAX_KILL_TASK) {
+
 		long cache_size = other_file * (long)(PAGE_SIZE / 1024);
 		long cache_limit = minfree * (long)(PAGE_SIZE / 1024);
 		long free = other_free * (long)(PAGE_SIZE / 1024);
+		
+		if(asus_selected[selected_index] == NULL){
+			selected_index++;
+			continue;
+		}
 
 		atomic64_set(&lmk_feed, 0);
-		if (test_task_lmk_waiting(selected) &&
-		    (test_task_state(selected, TASK_UNINTERRUPTIBLE))) {
-			lowmem_print(2, "'%s' (%d) is already killed\n",
-				     selected->comm,
-				     selected->pid);
+		if (test_task_lmk_waiting(asus_selected[selected_index]) &&
+		    (test_task_state(asus_selected[selected_index], TASK_UNINTERRUPTIBLE))) {
+			lowmem_print(1, "'%s' (%d) is already killed\n",
+				     asus_selected[selected_index]->comm,
+				     asus_selected[selected_index]->pid);
 			rcu_read_unlock();
 			if (lock_required)
 				mutex_unlock(&scan_mutex);
 			return 0;
 		}
-
-		task_lock(selected);
-		send_sig(SIGKILL, selected, 0);
-		if (selected->mm) {
-			task_set_lmk_waiting(selected);
-			if (!test_bit(MMF_OOM_SKIP, &selected->mm->flags) &&
+		
+		task_lock(asus_selected[selected_index]);
+		send_sig(SIGKILL, asus_selected[selected_index], 0);
+		if (asus_selected[selected_index]->mm) {
+			task_set_lmk_waiting(asus_selected[selected_index]);
+			if (!test_bit(MMF_OOM_SKIP, &asus_selected[selected_index]->mm->flags) &&
 			    oom_reaper) {
-				mark_lmk_victim(selected);
-				wake_oom_reaper(selected);
+				mark_lmk_victim(asus_selected[selected_index]);
+				wake_oom_reaper(asus_selected[selected_index]);
 			}
 		}
-		task_unlock(selected);
-		trace_lowmemory_kill(selected, cache_size, cache_limit, free);
+		
+		task_unlock(asus_selected[selected_index]);
+		trace_lowmemory_kill(asus_selected[selected_index], cache_size, cache_limit, free);
 		lowmem_print(1, "Killing '%s' (%d) (tgid %d), adj %hd,\n"
 			"to free %ldkB on behalf of '%s' (%d) because\n"
 			"cache %ldkB is below limit %ldkB for oom score %hd\n"
@@ -637,9 +700,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			"Total free pages is %ldkB\n"
 			"Total file cache is %ldkB\n"
 			"GFP mask is 0x%x\n",
-			selected->comm, selected->pid, selected->tgid,
-			selected_oom_score_adj,
-			selected_tasksize * (long)(PAGE_SIZE / 1024),
+			asus_selected[selected_index]->comm, asus_selected[selected_index]->pid, asus_selected[selected_index]->tgid,
+			asus_selected_oom_score[selected_index],
+			asus_selected_tasksize[selected_index] * (long)(PAGE_SIZE / 1024),
 			current->comm, current->pid,
 			cache_size, cache_limit,
 			min_score_adj,
@@ -653,21 +716,24 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			(long)(PAGE_SIZE / 1024),
 			sc->gfp_mask);
 
-		if (lowmem_debug_level >= 2 && selected_oom_score_adj == 0) {
-			show_mem(SHOW_MEM_FILTER_NODES, NULL);
-			show_mem_call_notifiers();
-			dump_tasks(NULL, NULL);
-		}
+
 
 		lowmem_deathpending_timeout = jiffies + HZ;
-		rem += selected_tasksize;
-		rcu_read_unlock();
+		rem += asus_selected_tasksize[selected_index];
+		
 		/* give the system time to free up the memory */
-		msleep_interruptible(20);
-		trace_almk_shrink(selected_tasksize, ret,
+		//msleep_interruptible(20);
+		trace_almk_shrink(asus_selected_tasksize[selected_index], ret,
 				  other_free, other_file,
 				  selected_oom_score_adj);
-	} else {
+		selected_index++;
+	}
+	
+
+
+	if (asus_selected[0])
+		rcu_read_unlock();
+	else{
 		trace_almk_shrink(1, ret, other_free, other_file, 0);
 		rcu_read_unlock();
 		if (other_free < lowmem_minfree[0] &&
@@ -678,10 +744,28 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 
 	}
 
+	msleep_interruptible(20);
+
 	lowmem_print(4, "%s %lu, %x, return %lu\n",
 		     __func__, sc->nr_to_scan, sc->gfp_mask, rem);
 	if (lock_required)
 		mutex_unlock(&scan_mutex);
+	
+	if (lowmem_debug_level >= 2 && selected_oom_score_adj == 0) {
+		show_mem(SHOW_MEM_FILTER_NODES, NULL);
+		show_mem_call_notifiers();
+		dump_tasks(NULL, NULL);
+	}
+	if(asus_selected[0] && (min_score_adj <= MINFREE_TO_PRINT_LOG) && time_after(jiffies,time_out)){
+			int count = 0;
+			printk(HEAD_LINE);
+			while (count < meminfo_str_index ){
+				printk(meminfo_str[count]);
+				count++;
+			}
+			time_out = jiffies + HZ * 10;
+	}
+
 	return rem;
 }
 

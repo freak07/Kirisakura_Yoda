@@ -1821,6 +1821,91 @@ static void edid_fixup_preferred(struct drm_connector *connector,
 	preferred_mode->type |= DRM_MODE_TYPE_PREFERRED;
 }
 
+//ASUS_SZ_BSP Lydia: Set preferred edid mode +++
+extern int lastFps;
+static void asus_fixup_preferred(struct drm_connector *connector)
+{
+	struct drm_display_mode *t, *cur_mode, *preferred_mode;
+	struct drm_display_mode *pmode, *pt;
+	int target_refresh = 0;
+	int cur_vrefresh, preferred_vrefresh;
+
+	if (list_empty(&connector->probed_modes))
+		return;
+
+    target_refresh = lastFps;
+    pr_err("Set target refresh to %d.\n", target_refresh);
+
+	preferred_mode = list_first_entry_or_null(&connector->modes,
+					  struct drm_display_mode, head);
+
+    if (preferred_mode == NULL) {
+        pr_err("No available modes.\n");
+        return;
+    }
+
+	list_for_each_entry_safe(cur_mode, t, &connector->modes, head) {
+		cur_mode->type &= ~DRM_MODE_TYPE_PREFERRED;
+
+		if (cur_mode == preferred_mode)
+			continue;
+
+		cur_vrefresh = cur_mode->vrefresh ?
+			cur_mode->vrefresh : drm_mode_vrefresh(cur_mode);
+		preferred_vrefresh = preferred_mode->vrefresh ?
+			preferred_mode->vrefresh : drm_mode_vrefresh(preferred_mode);
+
+        //pr_err("current vrefresh: %d display: %d x %d\n", cur_vrefresh, cur_mode->hdisplay, cur_mode->vdisplay);
+        if (cur_vrefresh < 60 || cur_vrefresh > target_refresh) {
+            //pr_err("Fps not in range.\n");
+            continue;
+        } else if (cur_vrefresh != 60 && cur_vrefresh != 90 && cur_vrefresh != 120) {
+            //pr_err("Fps not supported.\n");
+            continue;
+        }
+
+        /* Closest refresh mode is preferred */
+        if (MODE_REFRESH_DIFF(cur_vrefresh, target_refresh) <
+            MODE_REFRESH_DIFF(preferred_vrefresh, target_refresh)) {
+            preferred_mode = cur_mode;
+            pr_err("Set preferred for fps.\n");
+            pr_err("current vrefresh: %d display: %d x %d\n", cur_vrefresh, cur_mode->hdisplay,
+                cur_mode->vdisplay);
+        }
+
+        /* At a refresh, try to get higher size */
+        if ((MODE_REFRESH_DIFF(cur_vrefresh, target_refresh) ==
+            MODE_REFRESH_DIFF(preferred_vrefresh, target_refresh)) &&
+            (MODE_SIZE(cur_mode) > MODE_SIZE(preferred_mode))) {
+            preferred_mode = cur_mode;
+            pr_err("Set preferred for size.\n");
+            pr_err("current vrefresh: %d display: %d x %d\n", cur_vrefresh, cur_mode->hdisplay,
+                cur_mode->vdisplay);
+        }
+	}
+
+	list_for_each_entry_safe(pmode, pt, &connector->probed_modes, head) {
+		pmode->type &= ~DRM_MODE_TYPE_PREFERRED;
+
+		cur_vrefresh = pmode->vrefresh ? pmode->vrefresh : drm_mode_vrefresh(pmode);
+		preferred_vrefresh = preferred_mode->vrefresh ?
+			preferred_mode->vrefresh : drm_mode_vrefresh(preferred_mode);
+
+		if (pmode->clock && preferred_mode->clock &&
+		    KHZ2PICOS(pmode->clock) == KHZ2PICOS(preferred_mode->clock) &&
+		    pmode->hdisplay == preferred_mode->hdisplay &&
+		    pmode->vdisplay == preferred_mode->vdisplay &&
+		    cur_vrefresh == preferred_vrefresh) {
+            pr_err("Set preferred in probed modes");
+            pmode->type |= DRM_MODE_TYPE_PREFERRED;
+            pr_err("current vrefresh: %d display: %d x %d\n", cur_vrefresh, pmode->hdisplay,
+                pmode->vdisplay);
+        }
+	}
+	preferred_mode->type |= DRM_MODE_TYPE_PREFERRED;
+}
+//ASUS_SZ_BSP Lydia: Set preferred edid mode ---
+
 static bool
 mode_is_rb(const struct drm_display_mode *mode)
 {
@@ -4930,6 +5015,10 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 
 	if (quirks & (EDID_QUIRK_PREFER_LARGE_60 | EDID_QUIRK_PREFER_LARGE_75))
 		edid_fixup_preferred(connector, quirks);
+
+    //ASUS_SZ_BSP Lydia: Set preferred edid mode +++
+    asus_fixup_preferred(connector);
+    //ASUS_SZ_BSP Lydia: Set preferred edid mode ---
 
 	if (quirks & EDID_QUIRK_FORCE_6BPC)
 		connector->display_info.bpc = 6;

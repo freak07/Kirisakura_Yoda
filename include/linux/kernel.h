@@ -15,6 +15,58 @@
 #include <linux/build_bug.h>
 #include <asm/byteorder.h>
 #include <uapi/linux/kernel.h>
+#include <linux/asusdebug.h>
+
+// +++ ASUS_BSP : add for miniporting
+enum DEVICE_PRJID
+{
+	//ZS660KL
+	ZS660KL_PRJ_L = 0x0,
+	ZS660KL_PRJ = 0x3,
+
+	ZS660KL_UNKNOWN_PRJ = 0xFF
+};
+extern enum DEVICE_PRJID g_ASUS_prjID;
+
+enum DEVICE_HWID
+{
+	//ZS660KL
+	ZS660KL_EVB = 0x0,
+	ZS660KL_SR1 = 0x1,
+	ZS660KL_ER1 = 0x2,
+	ZS660KL_ER2 = 0x3,	
+	ZS660KL_PR1 = 0x4,
+	ZS660KL_PR2 = 0x5,
+       ZS660KL_MP  = 0x7,
+       
+	//ZS660KL_L
+	ZS660KL_CN_EVB = 0x10,
+	ZS660KL_CN_SR1 = 0x11,
+	ZS660KL_CN_ER1 = 0x12,
+	ZS660KL_CN_ER2 = 0x13,	
+	ZS660KL_CN_PR1 = 0x14,
+	ZS660KL_CN_PR2 = 0x15,
+       ZS660KL_CN_MP  = 0x17,        
+        
+	ZS660KL_UNKNOWN = 0xFF
+};
+extern enum DEVICE_HWID g_ASUS_hwID;
+
+enum DEVICE_SKUID
+{
+	//ZS660KL PRJ
+	ZS660KL_SKU_ID_0 = 0x0,
+	ZS660KL_SKU_ID_1 = 0x1,
+	ZS660KL_SKU_ID_2 = 0x2,
+	ZS660KL_SKU_ID_3 = 0x3,
+	ZS660KL_SKU_ID_4 = 0x4,
+	ZS660KL_SKU_ID_5 = 0x5,
+	ZS660KL_SKU_ID_6 = 0x6,
+	ZS660KL_SKU_ID_7 = 0x7,
+	ZS660KL_UNKNOWN_SKU = 0xFF
+};
+extern enum DEVICE_SKUID g_ASUS_skuID;
+// --- ASUS_BSP : add for miniporting
 
 #define USHRT_MAX	((u16)(~0U))
 #define SHRT_MAX	((s16)(USHRT_MAX>>1))

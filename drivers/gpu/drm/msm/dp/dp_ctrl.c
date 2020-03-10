@@ -578,6 +578,7 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 	u32 link_train_max_retries = 100;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_link_params *link_params;
+	int link_retry = 2;
 
 	catalog = ctrl->catalog;
 	link_params = &ctrl->link->link_params;
@@ -586,7 +587,7 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 				link_params->lane_count);
 
 	do {
-		pr_debug("bw_code=%d, lane_count=%d\n",
+		pr_err("bw_code=%d, lane_count=%d\n",
 			link_params->bw_code, link_params->lane_count);
 
 		rc = dp_ctrl_enable_link_clock(ctrl);
@@ -611,7 +612,12 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 			break;
 		}
 
-		dp_ctrl_link_rate_down_shift(ctrl);
+        if (link_retry-- == 0) {
+		    dp_ctrl_link_rate_down_shift(ctrl);
+		    link_retry = 2;
+		} else {
+            pr_err("link rate retry %d", link_retry);
+		}
 
 		dp_ctrl_configure_source_link_params(ctrl, false);
 		dp_ctrl_disable_link_clock(ctrl);

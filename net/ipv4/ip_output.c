@@ -97,9 +97,30 @@ EXPORT_SYMBOL(ip_send_check);
 int __ip_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct iphdr *iph = ip_hdr(skb);
-
+	//ASUS_BSP+++ Tracking packet before netfilter OUTPUT chain
+	struct net_device *dev = skb_dst(skb)->dev;
+	struct rtable *rt = skb_rtable(skb);
+	__be32 src_ip = iph->saddr, dst_ip = iph->daddr;
+	__be16 src_port = 0, dst_port = 0;
+	//ASUS_BSP---
 	iph->tot_len = htons(skb->len);
 	ip_send_check(iph);
+
+        //ASUS_BSP+++ Tracking packet before netfilter OUTPUT chain
+	if (iph->protocol == 6) { //TCP
+		struct tcphdr *tcp_header = tcp_hdr(skb);
+		src_port = tcp_header->source;
+		dst_port = tcp_header->dest;
+	} else if (iph->protocol == 17) { //UDP
+		struct udphdr *udp_header = udp_hdr(skb);
+		src_port = udp_header->source;
+		dst_port = udp_header->dest;
+	}
+	if (iph != NULL && rt != NULL && dev != NULL) {
+		pr_debug("[%s][%u] %pI4:%d --> %pI4:%d lookup table %u (%s)",
+			__func__, iph->protocol, &src_ip, ntohs(src_port), &dst_ip, ntohs(dst_port), rt->rt_table_id, dev->name);
+	}
+	//ASUS_BSP---
 
 	/* if egress device is enslaved to an L3 master device pass the
 	 * skb to its handler for processing
@@ -189,6 +210,26 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	unsigned int hh_len = LL_RESERVED_SPACE(dev);
 	struct neighbour *neigh;
 	u32 nexthop;
+	struct iphdr *iph = ip_hdr(skb);
+
+        //ASUS_BSP+++ Tracking packet after OUTPUT & POSTROUTING chain
+	__be32 src_ip = iph->saddr, dst_ip = iph->daddr;
+	__be16 src_port = 0, dst_port = 0;
+
+	if (iph->protocol == 6) { //TCP
+		struct tcphdr *tcp_header = tcp_hdr(skb);
+		src_port = tcp_header->source;
+		dst_port = tcp_header->dest;
+	} else if (iph->protocol == 17) { //UDP
+		struct udphdr *udp_header = udp_hdr(skb);
+		src_port = udp_header->source;
+		dst_port = udp_header->dest;
+	}
+	if (iph != NULL && rt != NULL && dev != NULL) {
+		pr_debug("[%s][%u] %pI4:%d --> %pI4:%d lookup table %u (%s)",
+			__func__, iph->protocol, &src_ip, ntohs(src_port), &dst_ip, ntohs(dst_port), rt->rt_table_id, dev->name);
+	}
+	//ASUS_BSP---
 
 	if (rt->rt_type == RTN_MULTICAST) {
 		IP_UPD_PO_STATS(net, IPSTATS_MIB_OUTMCAST, skb->len);
@@ -442,7 +483,6 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	rt = skb_rtable(skb);
 	if (rt)
 		goto packet_routed;
-
 	/* Make sure we can route this packet. */
 	rt = (struct rtable *)__sk_dst_check(sk, 0);
 	if (!rt) {
@@ -486,7 +526,6 @@ packet_routed:
 	iph->ttl      = ip_select_ttl(inet, &rt->dst);
 	iph->protocol = sk->sk_protocol;
 	ip_copy_addrs(iph, fl4);
-
 	/* Transport layer set skb->h.foo itself. */
 
 	if (inet_opt && inet_opt->opt.optlen) {

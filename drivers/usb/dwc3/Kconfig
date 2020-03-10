@@ -113,4 +113,9 @@ config USB_DWC3_MSM
 	  Applicable to QTI MSM Platforms with DesignWare Core USB3 IP,
 	  say 'Y' or 'M' if you have one such device.
 
+config USB_VD_TEST
+	tristate "Add interface of set typeC orientation"
+	depends on USB_DWC3_MSM
+	help
+	  Only for VD USB-IF 3.0 Tx test.
 endif

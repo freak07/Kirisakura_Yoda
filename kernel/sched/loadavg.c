@@ -65,6 +65,15 @@ unsigned long calc_load_update;
 unsigned long avenrun[3];
 EXPORT_SYMBOL(avenrun); /* should be removed */
 
+//ASUS++++
+#define LOAD_INT(x) ((x) >> FSHIFT)
+#define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
+extern struct work_struct __dumpthread_work;
+//ASUS---
+
+int suspend_skip_sync_flag = 0;
+EXPORT_SYMBOL(suspend_skip_sync_flag);
+
 /**
  * get_avenrun - get the load average array
  * @loads:	pointer to dest load array
@@ -322,6 +331,15 @@ static void calc_global_nohz(void)
 	 * calc_load_write_idx() will see the new time when it reads the new
 	 * index, this avoids a double flip messing things up.
 	 */
+	printk("loadavg %lu.%02lu  %ld/%d \n", LOAD_INT(avenrun[0]), LOAD_FRAC(avenrun[0]), nr_running(), nr_threads);
+//       if(LOAD_INT(avenrun[0]) > 7 )
+ //          schedule_work(&__dumpthread_work);
+
+	if(LOAD_INT(avenrun[0]) > 6 )
+		suspend_skip_sync_flag = 1;
+	else
+		suspend_skip_sync_flag = 0;
+
 	smp_wmb();
 	calc_load_idx++;
 }

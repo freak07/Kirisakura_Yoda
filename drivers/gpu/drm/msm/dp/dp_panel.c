@@ -101,6 +101,20 @@ static const struct dp_panel_info fail_safe = {
 	.bpp = 24,
 };
 
+/* ASUS BSP Display +++ */
+extern volatile enum POGO_ID ASUS_POGO_ID;
+enum POGO_ID {
+    NO_INSERT = 0,
+    INBOX,
+    STATION,
+    DT,
+    PCIE,
+    ERROR_1,
+    OTHER,
+};
+extern bool dp_display_is_hdmi_bridge(struct dp_panel *panel);
+bool dt_hdmi = false;
+
 /* OEM NAME */
 static const u8 vendor_name[8] = {81, 117, 97, 108, 99, 111, 109, 109};
 
@@ -1578,6 +1592,7 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	struct drm_dp_aux *drm_aux;
 	u8 *dpcd, rx_feature, temp;
 	u32 dfp_count = 0, offset = DP_DPCD_REV;
+	int timeout = 10;
 
 	if (!dp_panel) {
 		pr_err("invalid input\n");
@@ -1602,6 +1617,17 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	}
 
 	rlen = drm_dp_dpcd_read(drm_aux, DP_TRAINING_AUX_RD_INTERVAL, &temp, 1);
+    while (timeout) {
+        rlen = drm_dp_dpcd_read(drm_aux, DP_TRAINING_AUX_RD_INTERVAL, &temp, 1);
+
+        if (rlen == 1) {
+            break;
+        }
+        pr_err("error reading DP_TRAINING_AUX_RD_INTERVAL, retry\n");
+        msleep(20);
+        timeout--;
+    }
+
 	if (rlen != 1) {
 		pr_err("error reading DP_TRAINING_AUX_RD_INTERVAL\n");
 		rc = -EINVAL;
@@ -1933,7 +1959,13 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 	const u32 max_supported_bpp = 30, min_supported_bpp = 18;
 	u32 bpp = 0, data_rate_khz = 0;
 
-	bpp = min_t(u32, mode_edid_bpp, max_supported_bpp);
+    /* ASUS BSP Display +++ */
+    dt_hdmi = dp_display_is_hdmi_bridge(dp_panel);
+    if (ASUS_POGO_ID == DT && dt_hdmi) {
+        bpp = min_t(u32, mode_edid_bpp, DP_PANEL_DEFAULT_BPP);
+    } else
+        bpp = min_t(u32, mode_edid_bpp, max_supported_bpp);
+    /* ASUS BSP Display --- */
 
 	link_info = &dp_panel->link_info;
 	data_rate_khz = link_info->num_lanes * link_info->rate * 8;

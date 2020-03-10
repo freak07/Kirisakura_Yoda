@@ -382,6 +382,10 @@ static void fw_free_buf(struct firmware_buf *buf)
 static char fw_path_para[256];
 static const char * const fw_path[] = {
 	fw_path_para,
+	"/vendor/firmware",
+	"/vendor/etc/firmware",
+	"/vendor/etc/firmware/factory_test",
+	"/vendor/etc/firmware/vib_demo",
 	"/lib/firmware/updates/" UTS_RELEASE,
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
@@ -427,6 +431,58 @@ fw_get_filesystem_firmware(struct device *device, struct firmware_buf *buf)
 			rc = -ENAMETOOLONG;
 			break;
 		}
+
+		if (!strncmp(buf->fw_id, "widevine", 8) || !strncmp(buf->fw_id, "cppf", 4) || strstr(buf->fw_id,"HDCP") != NULL) {
+			snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+			dev_err(device, "[widevine||cppf||HDCP] Try to load firmware : %s \n", path);
+		}
+
+		/* ASUS BSP audio: change fw path */
+		if (!strncmp(buf->fw_id, "adsp", 4)) {
+			snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+			dev_err(device, "[Audio] Try to load firmware: %s\n", path);
+		}
+
+		if (!strcmp(buf->fw_id, "tfa98xx.cnt")) {
+			snprintf(path, PATH_MAX, "%s/%s", "/vendor/asusfw/audio", buf->fw_id);
+			dev_err(device, "[Audio] Try to load firmware: %s\n", path);
+		}
+		/* ASUS BSP audio --- */
+		
+        if (!strncmp(buf->fw_id, "cpe_", 4)) { //Austin+++
+			snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+			dev_err(device, "[Audio] Try to load firmware: %s\n", path);
+		}
+
+		/* ASUS BSP Sunny +++ */
+		if (!strncmp(buf->fw_id, "cdsp", 4)) {
+                        snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+                        dev_err(device, "[CDSP] Try to load firmware: %s\n", path);
+	        }
+		/* ASUS BSP Sunny --- */
+		/*
+		if (!strncmp(buf->fw_id, "spss", 4)) {
+                        snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+                        dev_err(device, "[SPSS] Try to load firmware: %s\n", path);
+	        }
+
+		if (!strncmp(buf->fw_id, "soter", 5)) {
+                        snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+                        dev_err(device, "[SOTER] Try to load firmware: %s\n", path);
+	        }
+
+		if (!strncmp(buf->fw_id, "venus", 5)) {
+                        snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+                        dev_err(device, "[VENUS] Try to load firmware: %s\n", path);
+	        }
+		*/
+
+		/* ASUS BSP Wigig: change fw path */
+                if (!strncmp(buf->fw_id, "wil6210.", 8)) {
+			snprintf(path, PATH_MAX, "%s/%s", "/vendor/firmware", buf->fw_id);
+			dev_err(device, "[Wigig] Try to load firmware: %s\n", path);
+		}
+		/* ASUS BSP ---*/
 
 		buf->size = 0;
 		rc = kernel_read_file_from_path(path, &buf->data, &size, msize,

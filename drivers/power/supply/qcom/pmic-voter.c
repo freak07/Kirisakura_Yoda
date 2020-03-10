@@ -495,6 +495,28 @@ out:
 	return rc;
 }
 
+/*ASUS BSP charger +++ : for setting ICL*/
+int asus_exclusive_vote(struct votable *votable, const char *client_str, bool enabled, int val)
+{
+	int i;
+	int rc = 0;
+
+	lock_votable(votable);
+	votable->effective_client_id = -EINVAL;
+	votable->effective_result = -EINVAL;
+	for (i = 0; i < votable->num_clients; i++) {
+		if (votable->client_strs[i]) {
+			votable->votes[i].enabled = false;
+			votable->votes[i].value = 0;
+		}
+	}
+	unlock_votable(votable);
+
+	rc = vote(votable, client_str, enabled, val);
+
+	return rc;
+}
+
 int rerun_election(struct votable *votable)
 {
 	int rc = 0;

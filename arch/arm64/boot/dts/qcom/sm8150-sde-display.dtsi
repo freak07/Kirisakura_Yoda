@@ -34,6 +34,7 @@
 #include "dsi-panel-nt36850-truly-dualmipi-wqhd-cmd.dtsi"
 #include <dt-bindings/clock/mdss-10nm-pll-clk.h>
 
+/*
 &tlmm {
 	display_panel_avdd_eldo_default: display_panel_avdd_eldo_default {
 		mux {
@@ -48,6 +49,7 @@
 		};
 	};
 };
+*/
 
 &soc {
 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
@@ -174,11 +176,11 @@
 		regulator-min-microvolt = <1800000>;
 		regulator-max-microvolt = <1800000>;
 		regulator-enable-ramp-delay = <233>;
-		gpio = <&tlmm 130 0>;
+		//gpio = <&tlmm 130 0>;
 		enable-active-high;
 		regulator-boot-on;
-		pinctrl-names = "default";
-		pintctrl-0 = <&display_panel_avdd_eldo_default>;
+		//pinctrl-names = "default";
+		//pintctrl-0 = <&display_panel_avdd_eldo_default>;
 	};
 
 	dsi_sharp_4k_dsc_video_display: qcom,dsi-display@0 {
@@ -501,8 +503,10 @@
 			      "mux_byte_clk1", "mux_pixel_clk1";
 
 		pinctrl-names = "panel_active", "panel_suspend";
-		pinctrl-0 = <&sde_dsi1_active &sde_te1_active>;
-		pinctrl-1 = <&sde_dsi1_suspend &sde_te1_suspend>;
+		//pinctrl-0 = <&sde_dsi1_active &sde_te1_active>;
+		//pinctrl-1 = <&sde_dsi1_suspend &sde_te1_suspend>;
+		pinctrl-0 = <&sde_te1_active>;
+		pinctrl-1 = <&sde_te1_suspend>;
 
 		qcom,platform-te-gpio = <&tlmm 9 0>;
 		qcom,panel-te-source = <1>;
@@ -546,7 +550,7 @@
 };
 
 &mdss_mdp {
-	connectors = <&sde_rscc &sde_wb &sde_dp &sde_dsi &sde_dsi1>;
+	connectors = <&sde_wb &sde_dp &sde_dsi &sde_dsi1>;
 };
 
 /* PHY TIMINGS REVISION T */

@@ -65,6 +65,18 @@
 
 #define sde_hdcp_1x_state(x) (hdcp->hdcp_state == x)
 
+extern volatile enum POGO_ID ASUS_POGO_ID;
+enum POGO_ID {
+    NO_INSERT = 0,
+    INBOX,
+    STATION,
+    DT,
+    PCIE,
+    ERROR_1,
+    OTHER,
+};
+extern bool dt_hdmi;
+
 struct sde_hdcp_sink_addr {
 	char *name;
 	u32 addr;
@@ -1454,13 +1466,17 @@ static int sde_hdcp_1x_cp_irq(void *input)
 			buf & BIT(2) ? "LINK_INTEGRITY_FAILURE" :
 				"REAUTHENTICATION_REQUEST");
 
-		hdcp->reauth = true;
+        if ((buf & BIT(2)) && (ASUS_POGO_ID == DT && dt_hdmi)) {
+            pr_err("ignore LINK_INTEGRITY_FAILURE\n");
+        } else {
+            hdcp->reauth = true;
 
-		if (!sde_hdcp_1x_state(HDCP_STATE_INACTIVE))
-			hdcp->hdcp_state = HDCP_STATE_AUTH_FAIL;
+            if (!sde_hdcp_1x_state(HDCP_STATE_INACTIVE))
+                hdcp->hdcp_state = HDCP_STATE_AUTH_FAIL;
 
-		complete_all(&hdcp->sink_r0_available);
-		sde_hdcp_1x_update_auth_status(hdcp);
+            complete_all(&hdcp->sink_r0_available);
+            sde_hdcp_1x_update_auth_status(hdcp);
+        }
 	} else if (buf & BIT(1)) {
 		pr_debug("R0' AVAILABLE\n");
 		hdcp->sink_r0_ready = true;

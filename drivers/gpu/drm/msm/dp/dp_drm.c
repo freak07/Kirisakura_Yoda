@@ -28,6 +28,8 @@
 
 #define to_dp_bridge(x)     container_of((x), struct dp_bridge, base)
 
+extern struct completion prepare_comp;
+
 void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 				struct drm_display_mode *drm_mode)
 {
@@ -107,6 +109,7 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
+    reinit_completion(&prepare_comp);
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
 	if (rc) {
@@ -141,18 +144,18 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 
 	if (!drm_bridge) {
 		pr_err("Invalid params\n");
-		return;
+		goto end;
 	}
 
 	bridge = to_dp_bridge(drm_bridge);
 	if (!bridge->connector) {
 		pr_err("Invalid connector\n");
-		return;
+		goto end;
 	}
 
 	if (!bridge->dp_panel) {
 		pr_err("Invalid dp_panel\n");
-		return;
+		goto end;
 	}
 
 	dp = bridge->display;
@@ -161,6 +164,9 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 	if (rc)
 		pr_err("[%d] DP display post enable failed, rc=%d\n",
 		       bridge->id, rc);
+
+end:
+    complete_all(&prepare_comp);
 }
 
 static void dp_bridge_disable(struct drm_bridge *drm_bridge)

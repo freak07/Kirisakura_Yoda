@@ -574,21 +574,13 @@
 			compatible = "android,firmware";
 			shared_meta: vbmeta {
 				compatible = "android,vbmeta";
-				parts = "vbmeta,boot,system,vendor,dtbo,odm";
+				parts = "vbmeta,boot,system,vendor,dtbo";
 			};
 			android_q_fstab: fstab {
 				compatible = "android,fstab";
 				vendor {
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/soc/8804000.sdhci/by-name/vendor";
-					type = "ext4";
-					mnt_flags = "ro,barrier=1,discard";
-					fsmgr_flags = "wait,slotselect,avb";
-					status = "ok";
-				};
-				odm {
-					compatible = "android,odm";
-					dev = "/dev/block/platform/soc/8804000.sdhci/by-name/odm";
 					type = "ext4";
 					mnt_flags = "ro,barrier=1,discard";
 					fsmgr_flags = "wait,slotselect,avb";
@@ -779,6 +771,11 @@
 			alignment = <0x0 0x400000>;
 			size = <0x0 0x2800000>;
 			linux,cma-default;
+		};
+		asus_debug_mem: asus_debug_resion@0{
+			compatible = "removed-dma-poll";
+			no-map;
+			reg = <0x0 0xA0000000 0x0 0x00300000>;
 		};
 	};
 
@@ -2621,6 +2618,7 @@
 				  <WAKE_TCS    1>,
 				  <ACTIVE_TCS  2>,
 				  <CONTROL_TCS 0>;
+				  status = "disabled";
 	};
 
 	apcs_glb: mailbox@17c00000 {
@@ -3563,7 +3561,7 @@
 
 	qcom,rmtfs_sharedmem@0 {
 		compatible = "qcom,sharedmem-uio";
-		reg = <0x0 0x200000>;
+		reg = <0x0 0x300000>;
 		reg-names = "rmtfs";
 		qcom,client-id = <0x00000001>;
 		qcom,guard-memory;
@@ -3805,6 +3803,10 @@
 		      <0xa0000000 0x10000000>,
 		      <0xb0000000 0x10000>;
 		reg-names = "membase", "smmu_iova_base", "smmu_iova_ipa";
+		wlan-asus_ant_80 = <&tlmm 80 0>;
+		wlan-asus_ant_79 = <&tlmm 79 0>;
+		wlan-asus_ant_67 = <&tlmm 67 0>;
+		wlan-asus_ant_64 = <&tlmm 64 0>;
 		iommus = <&apps_smmu 0x0640 0x1>;
 		interrupts = <0 414 0 /* CE0 */ >,
 			     <0 415 0 /* CE1 */ >,
@@ -3858,7 +3860,7 @@
 		qcom,smmu-fast-map;
 		qcom,smmu-coherent;
 		qcom,keep-radio-on-during-sleep;
-		status = "disabled";
+		status = "ok";
 	};
 
 	tspp: msm_tspp@0x8880000 {

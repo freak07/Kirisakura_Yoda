@@ -16,6 +16,7 @@
 #include "sm8150-pmic-overlay.dtsi"
 #include "sm8150-sde-display.dtsi"
 #include "sm8150-camera-sensor-cdp.dtsi"
+//#include "yoda-camera-sensor.dtsi"
 #include "sm8150-thermal-overlay.dtsi"
 
 &qupv3_se12_2uart {

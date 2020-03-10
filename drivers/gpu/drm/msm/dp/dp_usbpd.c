@@ -28,6 +28,29 @@
 #define VDM_VERSION		0x0
 #define USB_C_DP_SID		0xFF01
 
+/* ASUS BSP Display +++ */
+extern volatile enum POGO_ID ASUS_POGO_ID;
+enum POGO_ID {
+    NO_INSERT = 0,
+    INBOX,
+    STATION,
+    DT,
+    PCIE,
+    ERROR_1,
+    OTHER,
+};
+bool g_hpd = false;
+//extern struct completion usb_host_complete1;
+bool station_sleep = true;
+bool connect_from_dp = false;
+extern int hid_to_set_ultra_power_mode(u8 type); // 1:in 0:out
+extern int ec_i2c_control_display(char on);
+bool disconnect_from_dp = false;
+struct completion prepare_comp;
+extern uint8_t gDongleType;
+extern uint8_t gPanelStatusForHdcpWork;
+bool is_in_dp_disconnect = false;
+
 enum dp_usbpd_pin_assignment {
 	DP_USBPD_PIN_A,
 	DP_USBPD_PIN_B,
@@ -169,6 +192,7 @@ static void dp_usbpd_get_status(struct dp_usbpd_private *pd)
 			status->exit_dp_mode, status->base.hpd_high);
 	pr_debug("hpd_irq = %d\n", status->base.hpd_irq);
 
+    g_hpd = status->base.hpd_high;
 	dp_usbpd_init_port(&status->port, port);
 }
 
@@ -197,7 +221,7 @@ static u32 dp_usbpd_gen_config_pkt(struct dp_usbpd_private *pd)
 	if (pin == DP_USBPD_PIN_MAX)
 		pin = DP_USBPD_PIN_C;
 
-	pr_debug("pin assignment: %s\n", dp_usbpd_pin_name(pin));
+	pr_err("[Display] pin assignment: %s\n", dp_usbpd_pin_name(pin));
 
 	config |= BIT(pin) << 8;
 
@@ -258,6 +282,7 @@ static void dp_usbpd_connect_cb(struct usbpd_svid_handler *hdlr,
 	pr_debug("peer_usb_comm: %d\n", peer_usb_comm);
 	pd->dp_usbpd.base.peer_usb_comm = peer_usb_comm;
 	dp_usbpd_send_event(pd, DP_USBPD_EVT_DISCOVER);
+	is_in_dp_disconnect = false;
 }
 
 static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
@@ -272,10 +297,13 @@ static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
 
 	pd->alt_mode = DP_USBPD_ALT_MODE_NONE;
 	pd->dp_usbpd.base.alt_mode_cfg_done = false;
-	pr_debug("\n");
+	pr_err("[Display] disconnect.\n");
 
-	if (pd->dp_cb && pd->dp_cb->disconnect)
-		pd->dp_cb->disconnect(pd->dev);
+	if (pd->dp_cb && pd->dp_cb->disconnect) {
+	    g_hpd = false;
+	    is_in_dp_disconnect = true;
+	    pd->dp_cb->disconnect(pd->dev);
+	}
 }
 
 static int dp_usbpd_validate_callback(u8 cmd,
@@ -333,9 +361,14 @@ static int dp_usbpd_get_ss_lanes(struct dp_usbpd_private *pd)
 	 */
 	if (!pd->dp_usbpd.base.multi_func) {
 		while (timeout) {
+			/*if (gDongleType != 3) {
+				if (!wait_for_completion_timeout(&usb_host_complete1, HZ * 2))
+					pr_err("[Display] usb host timeout\n");	
+			}*/
+
 			rc = pd->svid_handler.request_usb_ss_lane(
 					pd->pd, &pd->svid_handler);
-			if (rc != -EBUSY)
+			if (rc != -EBUSY || connect_from_dp)
 				break;
 
 			pr_warn("USB busy, retry\n");
@@ -345,6 +378,7 @@ static int dp_usbpd_get_ss_lanes(struct dp_usbpd_private *pd)
 			timeout--;
 		}
 	}
+	connect_from_dp = false;
 
 	return rc;
 }
@@ -358,7 +392,7 @@ static void dp_usbpd_response_cb(struct usbpd_svid_handler *hdlr, u8 cmd,
 
 	pd = container_of(hdlr, struct dp_usbpd_private, svid_handler);
 
-	pr_debug("callback -> cmd: %s, *vdos = 0x%x, num_vdos = %d\n",
+	pr_err("[Display] callback -> cmd: %s, *vdos = 0x%x, num_vdos = %d\n",
 				dp_usbpd_cmd_name(cmd), *vdos, num_vdos);
 
 	if (dp_usbpd_validate_callback(cmd, cmd_type, num_vdos)) {
@@ -523,6 +557,8 @@ static void dp_usbpd_wakeup_phy(struct dp_hpd *dp_hpd, bool wakeup)
 	usbpd_vdm_in_suspend(usbpd->pd, wakeup);
 }
 
+struct dp_usbpd_private *asus_usbpd; // ASUS BSP Display +++
+
 struct dp_hpd *dp_usbpd_get(struct device *dev, struct dp_hpd_cb *cb)
 {
 	int rc = 0;
@@ -568,10 +604,117 @@ struct dp_hpd *dp_usbpd_get(struct device *dev, struct dp_hpd_cb *cb)
 	dp_usbpd->base.register_hpd = dp_usbpd_register;
 	dp_usbpd->base.wakeup_phy = dp_usbpd_wakeup_phy;
 
+	asus_usbpd = usbpd; // ASUS BSP Display +++
+
 	return &dp_usbpd->base;
 error:
 	return ERR_PTR(rc);
 }
+
+// ASUS BSP Display +++
+void asus_dp_disconnect(void)
+{
+    pr_err("[Display] DP disconnect\n");
+    if (!wait_for_completion_timeout(&prepare_comp, HZ * 5)) {
+        pr_err("[Display] wait prepare timeout\n");
+        return;
+    }
+    if(asus_usbpd->svid_handler.discovered){
+        asus_usbpd->svid_handler.disconnect(&asus_usbpd->svid_handler);
+        asus_usbpd->svid_handler.discovered = false;
+    }
+    usbpd_unregister_svid(asus_usbpd->pd, &asus_usbpd->svid_handler);
+}
+
+void asus_dp_connect(void)
+{
+    int rc = 0;
+    pr_err("[Display] DP connect\n");
+    connect_from_dp = true;
+    rc = usbpd_register_svid(asus_usbpd->pd, &asus_usbpd->svid_handler);
+    if (rc)
+        pr_err("pd registration failed\n");
+}
+
+void set_station_sleep(bool sleep) {
+    station_sleep = sleep;
+}
+
+//type = 0, call from usb
+//type = 1, call from display on/off
+//type = 2, call from hall sensor
+//type = 3, call from usb node (for shutdown service workaround)
+//type = 4, call from ec fw update
+void asus_dp_change_state(bool mode, int type)
+{
+    pr_warn("[Display] asus_dp_change_state mode=%d type=%d", mode, type);
+    if (type == 0 && ASUS_POGO_ID == STATION)
+    {
+        if (mode)
+            asus_dp_connect();
+        else
+            asus_dp_disconnect();
+    } else if (type == 1) {
+        if (mode)
+        {
+            ec_i2c_control_display(1);
+            gPanelStatusForHdcpWork = 1;
+        }
+        else
+        {
+        	gPanelStatusForHdcpWork = 0;
+            ec_i2c_control_display(0);
+        }
+    } else if (type == 2) {
+        if(ASUS_POGO_ID == STATION) {
+            if (station_sleep) {
+                if (mode) {
+                    hid_to_set_ultra_power_mode(0);
+                    asus_dp_connect();
+                    disconnect_from_dp = false;
+                }
+                else {
+                    asus_dp_disconnect();
+                    hid_to_set_ultra_power_mode(1);
+                    disconnect_from_dp = true;
+                }
+            } else {
+                pr_warn("Do not disconnect/connect dp when station_sleep is false!");
+            }
+        } else if (ASUS_POGO_ID == 200) {
+            // Disconnect CC when covered
+            pr_warn("Disconnect CC when covered!");
+            if (station_sleep && mode && disconnect_from_dp) {
+                hid_to_set_ultra_power_mode(0);
+                asus_dp_connect();
+                disconnect_from_dp = false;
+            }
+        }
+    } else if (type == 3) {
+        if (mode) {
+            asus_dp_connect();
+            disconnect_from_dp = false;
+        }
+        else {
+            //Close station panel when shutdown to avoid flash
+            //ec_i2c_control_display(0);
+            asus_dp_disconnect();
+            disconnect_from_dp = true;
+        }
+    } else if (type == 4) {
+        if (mode) {
+            asus_dp_connect();
+            disconnect_from_dp = false;
+        }
+        else {
+            asus_dp_disconnect();
+            disconnect_from_dp = true;
+        }
+    }
+    return;
+}
+EXPORT_SYMBOL(asus_dp_change_state);
+// ASUS BSP Display ---
 
 void dp_usbpd_put(struct dp_hpd *dp_hpd)
 {

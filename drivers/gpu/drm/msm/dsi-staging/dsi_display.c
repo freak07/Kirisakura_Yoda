@@ -31,6 +31,11 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+/* ASUS BSP Display +++ */
+#include <linux/proc_fs.h>
+#include <linux/string.h>
+#include <linux/syscalls.h>
+/* ASUS BSP Display --- */
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -57,6 +62,68 @@ static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
 	{}
 };
+/* ASUS BSP Display +++ */
+#define MIN_LEN 2
+#define MAX_LEN 4
+#define REG_BUF_SIZE 4096
+
+struct dsi_display *g_display;
+static struct mutex cmd_mutex;
+int g_hbm_mode = 0;
+int g_alpm_mode = 0;
+int g_alpm_bl = 256;
+int g_dim_mode = 0;
+int g_bl_delay = 0;
+char g_reg_buffer[REG_BUF_SIZE];
+bool readOSC = false;
+bool g_enter_AOD = false;
+bool g_panel_power_state_idle = false;
+int g_bl_lvl = 0; //asus jacob add for fod
+int g_bl_count = 0;
+int g_global_hbm_mode = 0;
+
+extern char g_lcd_unique_id[8]; 
+extern char g_panel_osc_p2;
+extern char g_panel_osc_p20;
+extern char g_lcd_stage[2];
+extern bool panelOff;
+extern volatile int g_id_fod;
+extern bool panel_on;
+extern void display_panel_off(int panel_off,int nolp);
+extern void rt_send_screen_resume(void);
+
+#define LCD_REGISTER_RW        "driver/panel_reg_rw"
+#define LCD_UNIQUE_ID          "lcd_unique_id"
+#define HBM_MODE               "hbm_mode"
+#define ALPM_MODE              "alpm_mode"
+#define DIM_MODE               "dim_mode"
+#define LCD_STAGE              "lcd_stage"
+#define DISPLAY_BACKLIGHT      "display_bl"
+#define GLOBAL_HBM_MODE        "globalHbm"
+void set_panel_aod_bl(void);
+void set_panel_dimming(void);
+void set_fod_ir_drop(bool drop);
+void set_panel_idle(bool enter);
+void set_panel_osc(struct dsi_display *display);
+void set_panel_hbm(bool enable);
+void get_tcon_cmd(char cmd, int rlen);
+void set_tcon_cmd(char *cmd, short len, int type);
+static void set_hbm_mode(int mode, int type);
+static void set_dim_mode(int mode, int type);
+extern int lastFps;
+extern bool g_Charger_mode;
+extern bool g_recovery_mode;
+static void display_recovery_func(struct work_struct *);
+static DECLARE_DELAYED_WORK(display_recovery_work, display_recovery_func);
+static struct workqueue_struct *display_recovery_workqueue;
+void set_panel_global_hbm(bool enable);
+/* ASUS BSP Display --- */
+
+// BSP SZ +++ Lydia_Wu add for Station HBM
+int g_station_hbm_mode = 0;
+EXPORT_SYMBOL(g_station_hbm_mode);
+extern int ec_i2c_set_hbm(char hbm);
+// BSP SZ --- Lydia_Wu add for Station HBM
 
 static void dsi_display_mask_ctrl_error_interrupts(struct dsi_display *display,
 			u32 mask, bool enable)
@@ -183,6 +250,8 @@ void dsi_rect_intersect(const struct dsi_rect *r1,
 	}
 }
 
+extern int ec_i2c_pd_set_diplay_bl(char* brightness); // BSP SZ +++ Lydia_Wu add for Station DP
+
 int dsi_display_set_backlight(struct drm_connector *connector,
 		void *display, u32 bl_lvl)
 {
@@ -227,6 +296,8 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	if (rc)
 		pr_err("unable to set backlight\n");
 
+	g_bl_lvl = bl_lvl;
+
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
 	if (rc) {
@@ -237,6 +308,8 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 
 error:
 	mutex_unlock(&panel->panel_lock);
+	/* ASUS BSP Display +++ */
+	set_panel_dimming();
 	return rc;
 }
 
@@ -1083,18 +1156,63 @@ int dsi_display_set_power(struct drm_connector *connector,
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
-		rc = dsi_panel_set_lp1(display->panel);
+		if (g_id_fod == 12) {
+//			rc = dsi_panel_set_nolp(display->panel);
+			g_enter_AOD = false;
+			dsi_panel_set_backlight(display->panel, 1024);
+			pr_err("[Display] fake AOD.\n");
+		} else {
+			if (!g_enter_AOD) {
+				pr_err("[Display] enter AOD.\n");
+				rc = dsi_panel_set_lp1(display->panel);
+				set_panel_aod_bl();
+				dsi_panel_set_backlight(display->panel, g_alpm_bl);
+				g_enter_AOD = true;
+			}
+		}
+
+		if (g_ASUS_hwID >= ZS660KL_ER1) {
+			pr_err("[Display] enter LP1 .\n");
+			display_panel_off(1,1);
+			panel_on = false;
+		}
+
 		break;
 	case SDE_MODE_DPMS_LP2:
+		pr_err("[Display] enter LP2 .\n");
 		rc = dsi_panel_set_lp2(display->panel);
 		break;
 	case SDE_MODE_DPMS_ON:
-		if (display->panel->power_mode == SDE_MODE_DPMS_LP1 ||
-			display->panel->power_mode == SDE_MODE_DPMS_LP2)
+		if ((display->panel->power_mode == SDE_MODE_DPMS_LP1 ||
+			display->panel->power_mode == SDE_MODE_DPMS_LP2 ) && g_enter_AOD) {
+			pr_err("[Display] exit AOD.\n");
 			rc = dsi_panel_set_nolp(display->panel);
+			g_enter_AOD = false;
+		}
+
+		rt_send_screen_resume();
+
+		if (g_ASUS_hwID >= ZS660KL_ER1) {
+			pr_err("[Display] enter nolp .\n");
+			if (!panel_on){
+			  display_panel_off(0,1);
+			  panel_on = true;
+			}
+		}
+
+		/* ASUS BSP Display +++ */	
+		if (lastFps >= 60 && lastFps < 90)
+			dsi_panel_asusFps(display->panel, 2);
+		else if (lastFps >= 90 && lastFps < 120)
+			dsi_panel_asusFps(display->panel, 1);
+		else if (lastFps == 120)
+			dsi_panel_asusFps(display->panel, 0);
+		/* ASUS BSP Display --- */
 		break;
 	case SDE_MODE_DPMS_OFF:
 	default:
+		if (g_enter_AOD) 
+			g_enter_AOD = false;
 		return rc;
 	}
 
@@ -4170,6 +4288,9 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	int rc = 0;
 	int i = 0;
 
+	pr_err("[Display] return.\n");
+	return rc;
+
 	if (!display || !dsi_mode || !display->panel) {
 		pr_err("Invalid params\n");
 		return -EINVAL;
@@ -4421,6 +4542,7 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 
 	if (mode->dsi_mode_flags &
 			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
+		pr_err("[Display] dsi_mode_flags = %d\n", mode->dsi_mode_flags);
 		rc = dsi_display_dfps_update(display, mode);
 		if (rc) {
 			pr_err("[%s]DSI dfps update failed, rc=%d\n",
@@ -4813,6 +4935,1047 @@ static struct attribute_group dynamic_dsi_clock_fs_attrs_group = {
 	.attrs = dynamic_dsi_clock_fs_attrs,
 };
 
+/* ASUS BSP Display +++ */
+void set_tcon_cmd(char *cmd, short len, int type)
+{
+	int i = 0, rc = 0;
+	struct dsi_cmd_desc cmds;
+	struct mipi_dsi_msg tcon_cmd = {0, 0x15, 0, 0, 0, len, cmd, 0, NULL};
+	struct dsi_display_ctrl *mctrl;
+	struct dsi_panel *panel;
+
+	for(i=0; i<1/*len*/; i++)
+		pr_info("[Display] cmd%d (0x%02x)\n", i, cmd[i]);
+
+	if(len > 2)
+		tcon_cmd.type = 0x39;
+
+	mctrl = &g_display->ctrl[g_display->cmd_master_idx];
+
+	if (!g_display || !g_display->panel || !mctrl || !mctrl->ctrl)
+		return;
+
+	panel = g_display->panel;
+	dsi_panel_acquire_panel_lock(panel);
+
+	if (g_display->ctrl[0].ctrl->current_state.controller_state == DSI_CTRL_ENGINE_ON  && (!panelOff || type)) {
+		mutex_lock(&cmd_mutex);
+		dsi_display_clk_ctrl(g_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+
+		if (g_display->tx_cmd_buf == NULL) {
+			rc = dsi_host_alloc_cmd_tx_buffer(g_display);
+			if (rc) {
+				pr_err("[Display] failed to allocate cmd tx buffer memory (%d)\n", rc);
+				goto error_disable_clks;
+			}
+		}
+
+		rc = dsi_display_cmd_engine_enable(g_display);
+		if (rc) {
+			pr_err("[Display] cmd engine enable failed(%d)\n", rc);
+			goto error_disable_clks;
+		}
+
+		cmds.msg = tcon_cmd;
+		cmds.last_command = 1;
+		cmds.post_wait_ms = 1;
+		if (cmds.last_command) {
+			cmds.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		}
+
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &cmds.msg, DSI_CTRL_CMD_FETCH_MEMORY);
+		if (rc)
+			pr_err("[Display] cmd transfer failed, rc=%d\n", rc);
+
+		dsi_display_cmd_engine_disable(g_display);
+		goto error_disable_clks;
+	} else {
+		pr_err("[Display] %s: panel is off\n", __func__);
+		dsi_panel_release_panel_lock(panel);
+		return;
+	}
+
+error_disable_clks:
+	dsi_display_clk_ctrl(g_display->dsi_clk_handle,DSI_ALL_CLKS, DSI_CLK_OFF);
+	mutex_unlock(&cmd_mutex);
+	dsi_panel_release_panel_lock(panel);
+}
+
+void get_tcon_cmd(char cmd, int rlen)
+{
+	char tmp[256];
+	u32 flags = 0;
+	int i = 0, rc = 0, start = 0;
+	u8 *tx_buf, *return_buf, *status_buf;
+
+	struct dsi_cmd_desc cmds;
+	struct mipi_dsi_msg tcon_cmd = {0, 0x06, 0, 0, 0, sizeof(cmd), NULL, rlen, NULL};
+	struct dsi_display_ctrl *mctrl;
+	struct dsi_panel *panel;
+
+	mctrl = &g_display->ctrl[g_display->cmd_master_idx];
+
+	if (!g_display || !g_display->panel || !mctrl || !mctrl->ctrl)
+		return;
+
+	panel = g_display->panel;
+	dsi_panel_acquire_panel_lock(panel);
+
+	if (g_display->ctrl[0].ctrl->current_state.controller_state == DSI_CTRL_ENGINE_ON) {
+		mutex_lock(&cmd_mutex);
+		dsi_display_clk_ctrl(g_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+
+		if (g_display->tx_cmd_buf == NULL) {
+			rc = dsi_host_alloc_cmd_tx_buffer(g_display);
+			if (rc) {
+				pr_err("[Display] failed to allocate cmd tx buffer memory (%d)\n", rc);
+				goto error_disable_clks;
+			}
+		}
+
+		rc = dsi_display_cmd_engine_enable(g_display);
+		if (rc) {
+			pr_err("[Display]cmd engine enable failed(%d)\n", rc);
+			goto error_disable_clks;
+		}
+
+		tx_buf = &cmd;
+		return_buf = kcalloc(rlen, sizeof(unsigned char), GFP_KERNEL);
+		status_buf = kzalloc(SZ_4K, GFP_KERNEL);
+		memset(status_buf, 0x0, SZ_4K);
+
+		cmds.msg = tcon_cmd;
+		cmds.last_command = 1;
+		cmds.post_wait_ms = 0;
+		if (cmds.last_command) {
+			cmds.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+			flags |= DSI_CTRL_CMD_LAST_COMMAND;
+		}
+		flags |= (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+
+		cmds.msg.tx_buf = tx_buf;
+		cmds.msg.rx_buf = status_buf;
+		cmds.msg.rx_len = rlen;
+		memset(g_reg_buffer, 0, REG_BUF_SIZE*sizeof(char));
+
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &cmds.msg, flags);
+		if (rc <= 0) {
+			pr_err("[Display] rx cmd transfer failed rc=%d\n", rc);
+		} else {
+			pr_err("[Display] rx cmd transfer succeed rc=%d\n", rc);
+			memcpy(return_buf + start, status_buf, rlen);
+			start += rlen;
+
+			for(i=0; i<rlen; i++) {
+				memset(tmp, 0, 256*sizeof(char));
+				snprintf(tmp, sizeof(tmp), "0x%02x = 0x%02x\n", cmd, return_buf[i]);
+				strcat(g_reg_buffer,tmp);
+				/* read panel osc p20 +++ */
+				if (!readOSC && rlen == 20)
+					g_panel_osc_p20 = return_buf[19];
+			}
+		}
+		if (cmd == 0xa) {
+			if ( return_buf[0] == 0x5C )
+				g_panel_power_state_idle = true;
+			else
+				g_panel_power_state_idle = false;
+			pr_err("[Display] panel power = 0x%02x\n", return_buf[0]);
+		}
+
+		dsi_display_cmd_engine_disable(g_display);
+		goto error_disable_clks;
+	} else {
+		pr_err("[Display] %s: panel is off\n", __func__);
+		dsi_panel_release_panel_lock(panel);
+		return;
+	}
+
+error_disable_clks:
+	dsi_display_clk_ctrl(g_display->dsi_clk_handle,DSI_ALL_CLKS, DSI_CLK_OFF);
+	mutex_unlock(&cmd_mutex);
+	dsi_panel_release_panel_lock(panel);
+
+}
+
+static ssize_t lcd_reg_rw(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char *messages, *tmp, *cur;
+	char *token, *token_par;
+	char *put_cmd;
+	bool flag = 0; /* w/r type : w=1, r=0 */
+	int *store;
+	int i = 0, cnt = 0, cmd_cnt = 0;
+	int ret = 0;
+	uint8_t str_len = 0;
+
+	messages = (char*) kmalloc(len*sizeof(char), GFP_KERNEL);
+	if(!messages)
+		return -EFAULT;
+
+	tmp = (char*) kmalloc(len*sizeof(char), GFP_KERNEL);
+	memset(tmp, 0, len*sizeof(char));
+	store =  (int*) kmalloc((len/MIN_LEN)*sizeof(int), GFP_KERNEL);
+	put_cmd = (char*) kmalloc((len/MIN_LEN)*sizeof(char), GFP_KERNEL);
+	memset(g_reg_buffer, 0, REG_BUF_SIZE*sizeof(char));
+
+	/* add '\0' to end of string */
+	if (copy_from_user(messages, buff, len)) {
+		ret = -1;
+		goto error;
+	}
+
+	cur = messages;
+	*(cur+len-1) = '\0';
+	pr_err("[Display] %s (%s) +++\n", __func__, cur);
+
+	if (strncmp(cur, "w", 1) == 0)
+		flag = true;
+	else if(strncmp(cur, "r", 1) == 0)
+		flag = false;
+	else {
+		ret = -1;
+		goto error;
+	}
+
+	while ((token = strsep(&cur, "wr")) != NULL) {
+		str_len = strlen(token);
+
+		if(str_len > 0) { /* filter zero length */
+			if(!(strncmp(token, ",", 1) == 0) || (str_len < MAX_LEN)) {
+				ret = -1;
+				goto error;
+			}
+
+			memset(store, 0, (len/MIN_LEN)*sizeof(int));
+			memset(put_cmd, 0, (len/MIN_LEN)*sizeof(char));
+			cmd_cnt++;
+
+			/* register parameter */
+			while ((token_par = strsep(&token, ",")) != NULL) {
+				if(strlen(token_par) > MIN_LEN) {
+					ret = -1;
+					goto error;
+				}
+				if(strlen(token_par)) {
+					sscanf(token_par, "%x", &(store[cnt]));
+					cnt++;
+				}
+			}
+
+			for(i=0; i<cnt; i++)
+				put_cmd[i] = store[i]&0xff;
+
+			if(flag) {
+				pr_err("[Display] write panel command\n");
+				set_tcon_cmd(put_cmd, cnt, 0);
+			}
+			else {
+				pr_err("[Display] read panel command\n");
+				get_tcon_cmd(put_cmd[0], store[1]);
+			}
+
+			if(cur != NULL) {
+				if (*(tmp+str_len) == 'w')
+					flag = true;
+				else if (*(tmp+str_len) == 'r')
+					flag = false;
+			}
+			cnt = 0;
+		}
+
+		memset(tmp, 0, len*sizeof(char));
+
+		if(cur != NULL)
+			strcpy(tmp, cur);
+	}
+
+	if(cmd_cnt == 0) {
+		ret = -1;
+		goto error;
+	}
+
+	ret = len;
+
+error:
+	pr_err("[Display] %s(%d) ---\n", __func__, ret);
+	kfree(messages);
+	kfree(tmp);
+	kfree(store);
+	kfree(put_cmd);
+	return ret;
+}
+
+static ssize_t lcd_reg_read(struct file *file, char __user *buf,
+				 size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+
+	buff = kzalloc(SZ_4K, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+
+	len += sprintf(buff, "%s\n", g_reg_buffer);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+
+	return ret;
+}
+
+static struct file_operations lcd_reg_rw_ops = {
+	.write = lcd_reg_rw,
+	.read = lcd_reg_read,
+};
+
+static ssize_t lcd_unique_id_read(struct file *file, char __user *buf, 
+				size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kzalloc(256, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	len += sprintf(buff, "%s\n", g_lcd_unique_id);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations lcd_unique_id_ops = {
+	.read = lcd_unique_id_read,
+};
+
+static long display_atol(char *nptr)
+{
+    int c; /* current char */
+    long total; /* current total */
+    int sign; /* if ''-'', then negative, otherwise positive */
+    /* skip whitespace */
+    while ( isspace((int)(unsigned char)*nptr) )
+        ++nptr;
+    c = (int)(unsigned char) * nptr++;
+    sign = c; /* save sign indication */
+    if (c == '-' || c == '+')
+        c = (int)(unsigned char) * nptr++; /* skip sign */
+    total = 0;
+    while (isdigit(c)) {
+        total = 10 * total + (c - '0'); /* accumulate digit */
+        c = (int)(unsigned char) * nptr++; /* get next char */
+    }
+    if (sign == '-')
+        return -total;
+    else
+        return total; /* return result, negated if necessary */
+}
+
+int display_atoi(char *nptr)
+{
+    return (int)display_atol(nptr);
+}
+
+static ssize_t display_bl_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char messages[256];
+	memset(messages, 0, sizeof(messages));
+
+	if (len > 256)
+		len = 256;
+	if (copy_from_user(messages, buff, len))
+		return -EFAULT;
+
+	g_bl_delay = display_atoi(messages);
+	pr_err("[Display] write g_bl_delay is %d\n", g_bl_delay);
+
+	return len;
+}
+
+static ssize_t display_bl_read(struct file *file, char __user *buf,
+							 size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+
+	buff = kzalloc(100, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+
+	pr_err("[Display] read g_bl_delay is %d\n", g_bl_delay);
+
+	len += sprintf(buff, "%d\n", g_bl_delay);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+
+	return ret;
+}
+
+static struct file_operations display_bl_ops = {
+	.write = display_bl_write,
+	.read  = display_bl_read,
+};
+
+/* HBM Mode
+ * 0 : call from AP
+ * 1 : call in AOD
+*/
+static void set_hbm_mode(int mode, int type)
+{
+	static char hbm_on[2] = {0x53, 0xEC};	/* hbm on command */
+	static char hbm_off[2] = {0x53, 0x2C};	/* hbm off command */
+	
+	if (mode == g_hbm_mode) {
+		pr_err("[Display] mode same\n");
+		return;
+	}
+	
+	g_hbm_mode = mode;
+	pr_err("[Display] hbm (%d)\n", mode);
+
+    // BSP SZ +++ Lydia_Wu add for Station HBM
+    g_station_hbm_mode = mode;
+    if (mode == 0) {
+        ec_i2c_set_hbm(0);
+    } else if (mode == 1) {
+        ec_i2c_set_hbm(1);
+    }
+    // BSP SZ --- Lydia_Wu add for Station HBM
+
+	if (mode == 0) {
+		if (strncmp(g_lcd_stage, "0", 1) == 0)
+			set_tcon_cmd(hbm_off, sizeof(hbm_off), type);
+	} else if (mode == 1) {
+		if (strncmp(g_lcd_stage, "0", 1) == 0)
+			set_tcon_cmd(hbm_on, sizeof(hbm_on), type);
+	}
+	
+	if (strncmp(g_lcd_stage, "0", 1) != 0) {
+		pr_err("[Display] dimming hbm (%d)\n", mode);
+		set_panel_hbm(mode);	
+	}
+}
+
+static ssize_t hbm_mode_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char messages[256];
+	memset(messages, 0, sizeof(messages));
+	
+	if (len > 256)
+		len = 256;
+	if (copy_from_user(messages, buff, len))
+		return -EFAULT;
+	
+	if (g_enter_AOD) {
+		pr_err("[Display] skip hbm in AOD.");
+		return len;
+	}
+
+	if (!panelOff) {
+		if (strncmp(messages, "0", 1) == 0) {
+			set_hbm_mode(0, 0);
+		} else if (strncmp(messages, "1", 1) == 0) {
+			set_hbm_mode(1, 0);
+		} else {
+			pr_err("[Display] don't match any hbm mode.\n");
+		}
+	} else {
+		pr_err("[Display] unable to set.\n");
+		g_hbm_mode = 0;
+	}
+	
+	return len;
+}
+
+static ssize_t hbm_mode_read(struct file *file, char __user *buf,
+							 size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kzalloc(100, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	pr_debug("[Display] hbm mode is %d\n", g_hbm_mode);
+	
+	len += sprintf(buff, "%d\n", g_hbm_mode);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations hbm_mode_ops = {
+	.write = hbm_mode_write,
+	.read  = hbm_mode_read,
+};
+
+int dsi_display_asusFps(struct dsi_display *display, int type)
+{
+	int rc = 0;
+	if (!display || !display->panel) {
+		pr_err("Invalid params\n");
+		return -EINVAL;
+	}
+		
+	mutex_lock(&display->display_lock);
+
+	rc = dsi_panel_asusFps(display->panel, type);
+	if (rc) {
+		pr_err("[%s] failed to enable DSI panel, rc=%d\n",
+			display->name, rc);
+	}
+	
+	mutex_unlock(&display->display_lock);
+	return rc;
+}
+
+void set_panel_osc(struct dsi_display *display)
+{
+	int rc = 0, rlen = 20;
+	u8 *tx_buf, *return_buf;
+	u32 flags = 0;
+		
+	static char bank[2] = {0xB0, 0x04};
+	static char set[5]  = {0xE8, 0x00, 0x00, 0x00, 0x02};
+	static char get     = 0xE4;
+	static char dispOff[2] = {0x28, 0x00};
+	
+	struct dsi_display_ctrl *mctrl;
+	struct dsi_cmd_desc bank_cmd;
+	struct dsi_cmd_desc set_cmd;
+	struct dsi_cmd_desc get_cmd;
+	struct dsi_cmd_desc dispOff_cmd;
+	struct mipi_dsi_msg bank_msg = {0, 0x15, 0, 0, 0, sizeof(bank), bank, 0, NULL};
+	struct mipi_dsi_msg set_msg  = {0, 0x39, 0, 0, 0, sizeof(set), set, 0, NULL};
+	struct mipi_dsi_msg get_msg  = {0, 0x06, 0, 0, 0, sizeof(get), NULL, rlen, NULL};
+	struct mipi_dsi_msg dispOff_msg = {0, 0x05, 0, 0, 0, sizeof(dispOff), dispOff, 0, NULL};
+
+	mctrl = &display->ctrl[display->cmd_master_idx];
+	
+	if (!display || !display->panel || !mctrl || !mctrl->ctrl || !display->panel->dfps_caps.dfps_support)
+		return;
+	
+	dsi_panel_acquire_panel_lock(display->panel);
+
+	if (display->ctrl[0].ctrl->current_state.controller_state == DSI_CTRL_ENGINE_ON  
+			&& !panelOff) {
+		mutex_lock(&cmd_mutex);
+		dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+		
+		if (display->tx_cmd_buf == NULL) {
+			rc = dsi_host_alloc_cmd_tx_buffer(display);
+			if (rc) {
+				pr_err("[Display] alloc tx_cmd_buf failed (%d)\n", rc);
+				goto error_disable_clks;
+			}
+		}
+
+		rc = dsi_display_cmd_engine_enable(display);
+		if (rc) {
+			pr_err("[Display] cmd engine enable failed(%d)\n", rc);
+			goto error_disable_clks;
+		}
+		
+		// switch to bank 00
+		bank_cmd.msg = bank_msg;
+		bank_cmd.last_command = 1;
+		bank_cmd.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &bank_cmd.msg, DSI_CTRL_CMD_FETCH_MEMORY);
+		if (rc)
+			pr_err("[Display] bank_cmd transfer failed, rc=%d\n", rc);
+		
+		// set cmd 0xE8
+		set_cmd.msg = set_msg;
+		set_cmd.last_command = 1;
+		set_cmd.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &set_cmd.msg, DSI_CTRL_CMD_FETCH_MEMORY);
+		if (rc)
+			pr_err("[Display] set_cmd transfer failed, rc=%d\n", rc);
+				
+		// get cmd 0xE4
+		tx_buf = &get;
+		return_buf = kcalloc(rlen, sizeof(unsigned char), GFP_KERNEL);
+		
+		get_cmd.msg = get_msg;
+		get_cmd.last_command = 1;
+		get_cmd.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		flags |= DSI_CTRL_CMD_LAST_COMMAND | (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+
+		get_cmd.msg.tx_buf = tx_buf;
+		get_cmd.msg.rx_buf = return_buf;
+		get_cmd.msg.rx_len = rlen;
+		
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &get_cmd.msg, flags);
+		if (rc <= 0) {
+			pr_err("[Display] rx cmd transfer failed rc=%d\n", rc);
+		} else {
+			g_panel_osc_p20 = return_buf[19];
+			pr_err("[Display] g_panel_osc_p20 = 0x%x\n", g_panel_osc_p20);
+		}
+
+		rc = dsi_panel_set_osc(display->panel);
+		if (rc) 
+			pr_err("failed to send OSC cmds, rc=%d\n", rc);
+
+		if (g_Charger_mode || g_recovery_mode) {
+			// set dislay off
+			dispOff_cmd.msg = dispOff_msg;
+			dispOff_cmd.last_command = 1;
+			dispOff_cmd.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+			rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &dispOff_cmd.msg, DSI_CTRL_CMD_FETCH_MEMORY);
+			if (rc)
+				pr_err("[Display] set_cmd transfer failed, rc=%d\n", rc);
+			if(g_Charger_mode) 
+				msleep(300);
+		}
+
+		dsi_display_cmd_engine_disable(display);
+		goto error_disable_clks;
+	} else {
+		pr_err("[Display] %s: panel is off\n", __func__);
+		dsi_panel_release_panel_lock(display->panel);
+		return;
+	}
+	
+error_disable_clks:
+	dsi_display_clk_ctrl(display->dsi_clk_handle,DSI_ALL_CLKS, DSI_CLK_OFF);
+	mutex_unlock(&cmd_mutex);
+	dsi_panel_release_panel_lock(display->panel);
+	readOSC = true;
+}
+
+void set_fod_ir_drop(bool drop)
+{
+	if (strncmp(g_lcd_stage, "1", 1) == 0) {
+		pr_err("[Display] Jacob \n");
+		dsi_panel_set_ir_drop(g_display->panel, drop);
+	}
+}
+
+static ssize_t alpm_mode_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char messages[256];
+	memset(messages, 0, sizeof(messages));
+	
+	if (len > 256)
+		len = 256;
+	if (copy_from_user(messages, buff, len))
+		return -EFAULT;
+	
+	if (strncmp(messages, "0", 1) == 0) {
+		g_alpm_mode = 0;
+	} else if (strncmp(messages, "1", 1) == 0) { //off to 40nits
+		g_alpm_mode = 1;
+		set_panel_aod_bl();
+	} else if (strncmp(messages, "2", 1) == 0) { //off to 5nits
+		g_alpm_mode = 2;
+		g_alpm_bl = 16;
+	} else if (strncmp(messages, "3", 1) == 0) { //5nits to 40nits
+		g_alpm_mode = 3;
+		set_panel_aod_bl();
+	} else if (strncmp(messages, "4", 1) == 0) { //40nits to 5nits
+		g_alpm_mode = 4;
+		g_alpm_bl = 16;
+	} else {
+		pr_err("[Display] don't match any alpm mode.(%s)\n", messages);
+	}
+	
+	if (g_alpm_mode != 0)
+		dsi_panel_set_backlight(g_display->panel, g_alpm_bl);
+	pr_err("[Display] alpm mode = %d, bl=%d\n", g_alpm_mode, g_alpm_bl);
+	
+	return len;
+}
+
+static ssize_t alpm_mode_read(struct file *file, char __user *buf,
+							  size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kmalloc(100, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	pr_err("[Display] alpm mode: %d\n", g_alpm_mode);
+	
+	len += sprintf(buff, "%d\n", g_alpm_mode);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations alpm_mode_ops = {
+	.write = alpm_mode_write,
+	.read = alpm_mode_read,
+};
+
+/* DIM Mode
+ * 0 : call from AP
+ * 1 : call in AOD
+*/
+static void set_dim_mode(int mode, int type)
+{
+	static char bank[2]  = {0xB0, 0x84};
+	static char bank_0[2]  = {0xB0, 0x04};
+	static char dim[2]   = {0xDE, 0x30}; /* 4 pulse command */
+	static char pulse[4] = {0x30, 0x50, 0x60, 0x70}; /* 4,8,12,16 pulse command */
+	static char dim_60[134] = {0xCF, 0x64, 0x0B, 0x00, 0x0D, 0x00, 0x88, 0x02, 0x30, 0x0b, 0x77, 
+							  0x0B, 0x8B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+							  0x01, 0x01, 0x01, 0x00, 0x22, 0x00, 0x22, 0x00, 0x22, 0x00, 0xb7, 
+							  0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x02, 0x9F, 0x02, 0x9F, 0x02,
+							  0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x00, 0x22, 0x00, 0x22, 0x00, 0x22, 
+							  0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x02, 0x9F, 0x02, 
+							  0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x01, 0x42, 0x01, 0x42, 
+							  0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 
+							  0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x1C, 0x1C, 
+							  0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x01, 
+							  0x9A, 0x02, 0x67, 0x02, 0x67, 0x02, 0x67, 0x02, 0x67, 0x0F, 0x88,
+							  0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 
+							  0x88, 0x19};
+	static char dim_90[134] = {0xCF, 0x64, 0x0B, 0x00, 0x0D, 0x00, 0x88, 0x02, 0x30, 0x0b, 0x77, 
+							  0x0B, 0x8B, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 
+							  0x03, 0x03, 0x03, 0x00, 0x22, 0x00, 0x22, 0x00, 0x22, 0x00, 0xb7, 
+							  0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x02, 0x9F, 0x02, 0x9F, 0x02,
+							  0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x00, 0x22, 0x00, 0x22, 0x00, 0x22, 
+							  0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x00, 0xb7, 0x02, 0x9F, 0x02,
+							  0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x02, 0x9F, 0x01, 0x42, 0x01, 0x42,
+							  0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01,
+							  0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x01, 0x42, 0x1C, 0x1C,
+							  0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x01, 
+							  0x9A, 0x02, 0x67, 0x02, 0x67, 0x02, 0x67, 0x02, 0x67, 0x0F, 0x88, 
+							  0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 0x88, 0x0F, 
+							  0x88, 0x19};
+	
+	g_dim_mode = mode;
+	pr_err("[Display] dim (%d)\n", mode);
+	
+	if (mode == 0) {
+		if (lastFps >= 60 && lastFps < 90)
+			dsi_display_asusFps(g_display, 2);
+		else if (lastFps >= 90 && lastFps < 120)
+			dsi_display_asusFps(g_display, 1);
+		else if (lastFps == 120)
+			dsi_display_asusFps(g_display, 0);
+	}	
+	else if (mode == 1 && lastFps == 60) {
+		set_tcon_cmd(bank_0, sizeof(bank_0), type);
+		msleep(1);
+		set_tcon_cmd(dim_60, sizeof(dim_60), type);
+	} 
+	else if (mode == 2 && lastFps == 90) {
+		set_tcon_cmd(bank_0, sizeof(bank_0), type);
+		msleep(1);
+		set_tcon_cmd(dim_90, sizeof(dim_90), type);	
+	} 
+	else if (mode == 3 && lastFps == 120) {
+		set_tcon_cmd(bank, sizeof(bank), type);
+		msleep(1);
+		dim[1] = pulse[1];	
+		set_tcon_cmd(dim, sizeof(dim), type);
+	} 
+	else {
+		pr_err("[Display] fps is not match.\n");
+	}
+}
+
+static ssize_t dim_mode_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char messages[256];
+	memset(messages, 0, sizeof(messages));
+	
+	if (len > 256)
+		len = 256;
+	if (copy_from_user(messages, buff, len))
+		return -EFAULT;
+	
+	if (!panelOff) {
+		if (strncmp(messages, "0", 1) == 0) {
+			set_dim_mode(0, 0);
+		} else if (strncmp(messages, "1", 1) == 0) {
+			set_dim_mode(1, 0);
+		} else if (strncmp(messages, "2", 1) == 0) {
+			set_dim_mode(2, 0);
+		} else if (strncmp(messages, "3", 1) == 0) {
+			set_dim_mode(3, 0);
+		} else {
+			pr_err("[Display] don't match any dim mode.\n");
+		}
+	} else {
+		pr_err("[Display] unable to set.\n");
+	}
+	
+	return len;
+}
+
+static ssize_t dim_mode_read(struct file *file, char __user *buf,
+							 size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kzalloc(100, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	pr_debug("[Display] dim mode is %d\n", g_dim_mode);
+	
+	len += sprintf(buff, "%d\n", g_dim_mode);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations dim_mode_ops = {
+	.write = dim_mode_write,
+	.read  = dim_mode_read,
+};
+
+void set_panel_idle(bool enter)
+{
+
+	if (!g_display || !g_display->panel)
+		return;
+
+	pr_err("[Display] idle (%d)\n", enter);
+
+	dsi_panel_set_idle(g_display->panel, enter);
+
+	/* ASUS BSP Display +++ */
+	if (lastFps >= 60 && lastFps < 90)
+		dsi_panel_asusFps(g_display->panel, 2);
+	else if (lastFps >= 90 && lastFps < 120)
+		dsi_panel_asusFps(g_display->panel, 1);
+	/*else if (lastFps == 120)
+		dsi_panel_asusFps(g_display->panel, 0);*/
+	/* ASUS BSP Display --- */
+}
+
+static ssize_t lcd_stage_read(struct file *file, char __user *buf, 
+				size_t count, loff_t *ppos)
+{
+	int len = 0, lcd_stage = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kzalloc(256, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	if (strncmp(g_lcd_stage, "0", 1) == 0)
+		lcd_stage = 0;
+	else if (strncmp(g_lcd_stage, "1", 1) == 0) 
+		lcd_stage = 1;
+	else if (strncmp(g_lcd_stage, "2", 1) == 0) 
+		lcd_stage = 2;
+	else 
+		lcd_stage = 2;
+		
+	len += sprintf(buff, "%d\n", lcd_stage);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations lcd_stage_ops = {
+	.read = lcd_stage_read,
+};
+
+void set_panel_dimming()
+{
+	static char dimming[2] = {0x53, 0x2C};
+
+	if (g_enter_AOD || g_bl_lvl == 0) {
+		g_bl_delay = 0;
+		g_bl_count = 0;
+		return;
+	}
+	
+	if (g_bl_count == 1 && g_hbm_mode == 0) {
+		set_tcon_cmd(dimming, sizeof(dimming), 0);
+	}
+	dsi_panel_bl_delay();
+	
+	g_bl_count++;
+}
+
+void set_panel_aod_bl()
+{
+	if (strncmp(g_lcd_stage, "0", 1) == 0)
+		g_alpm_bl = 112;
+	else if (strncmp(g_lcd_stage, "1", 1) == 0) 
+		g_alpm_bl = 337;
+	else if (strncmp(g_lcd_stage, "2", 1) == 0) 
+		g_alpm_bl = 256;
+	else 
+		g_alpm_bl = 256;
+}
+
+void set_panel_hbm(bool enable)
+{
+	if (!g_display || !g_display->panel)
+		return;
+
+	dsi_panel_set_hbm(g_display->panel, enable);
+}
+
+void set_panel_global_hbm(bool enable)
+{
+	if (!g_display || !g_display->panel)
+		return;
+
+	dsi_panel_set_global_hbm(g_display->panel, enable);
+}
+
+void set_panel_in_recovery()
+{
+	queue_delayed_work(display_recovery_workqueue, &display_recovery_work, msecs_to_jiffies(50));
+}
+
+static void display_recovery_func(struct work_struct *ws)
+{
+	int rc = 0;
+		
+	static char dispOn[2] = {0x29, 0x00};
+	
+	struct dsi_display_ctrl *mctrl;
+	struct dsi_cmd_desc dispOn_cmd;
+	struct mipi_dsi_msg dispOn_msg = {0, 0x05, 0, 0, 0, sizeof(dispOn), dispOn, 0, NULL};
+
+	mctrl = &g_display->ctrl[g_display->cmd_master_idx];
+	
+	if (!g_display || !g_display->panel || !mctrl ||
+			!mctrl->ctrl || !g_display->panel->dfps_caps.dfps_support || !g_recovery_mode)
+		return;
+	
+	dsi_panel_acquire_panel_lock(g_display->panel);
+
+	if (g_display->ctrl[0].ctrl->current_state.controller_state == DSI_CTRL_ENGINE_ON  
+			&& !panelOff) {
+		mutex_lock(&cmd_mutex);
+		dsi_display_clk_ctrl(g_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+		
+		if (g_display->tx_cmd_buf == NULL) {
+			rc = dsi_host_alloc_cmd_tx_buffer(g_display);
+			if (rc) {
+				pr_err("[Display] alloc tx_cmd_buf failed (%d)\n", rc);
+				goto error_disable_clks;
+			}
+		}
+
+		rc = dsi_display_cmd_engine_enable(g_display);
+		if (rc) {
+			pr_err("[Display] cmd engine enable failed(%d)\n", rc);
+			goto error_disable_clks;
+		}
+
+		dispOn_cmd.msg = dispOn_msg;
+		dispOn_cmd.last_command = 1;
+		dispOn_cmd.msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+
+		rc = dsi_ctrl_cmd_transfer(mctrl->ctrl, &dispOn_cmd.msg, DSI_CTRL_CMD_FETCH_MEMORY);
+		if (rc)
+			pr_err("[Display] set_cmd transfer failed, rc=%d\n", rc);
+
+		dsi_display_cmd_engine_disable(g_display);
+		goto error_disable_clks;
+	} else {
+		pr_err("[Display] %s: panel is off\n", __func__);
+		dsi_panel_release_panel_lock(g_display->panel);
+		return;
+	}
+	
+error_disable_clks:
+	dsi_display_clk_ctrl(g_display->dsi_clk_handle,DSI_ALL_CLKS, DSI_CLK_OFF);
+	mutex_unlock(&cmd_mutex);
+	dsi_panel_release_panel_lock(g_display->panel);
+}
+
+/* HBM Mode
+ * 0 : call from AP
+ * 1 : call in AOD
+*/
+static void set_global_hbm_mode(int mode, int type)
+{
+
+	if (mode == g_global_hbm_mode) {
+		pr_err("[Display] global hbm mode same\n");
+		return;
+	}
+	
+	g_global_hbm_mode = mode;
+
+	pr_err("[Display] dimming global hbm (%d)\n", mode);
+	set_panel_global_hbm(mode);
+}
+
+static ssize_t global_hbm_mode_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+	char messages[256];
+	memset(messages, 0, sizeof(messages));
+	
+	if (len > 256)
+		len = 256;
+	if (copy_from_user(messages, buff, len))
+		return -EFAULT;
+
+	if (!panelOff) {
+		if (strncmp(messages, "0", 1) == 0) {
+			set_global_hbm_mode(0, 0);
+		} else if (strncmp(messages, "1", 1) == 0) {
+			set_global_hbm_mode(1, 0);
+		} else {
+			pr_err("[Display] don't match any hbm mode.\n");
+		}
+	} else {
+		pr_err("[Display] unable to set.\n");
+		g_global_hbm_mode = 0;
+	}
+	
+	return len;
+}
+
+static ssize_t global_hbm_mode_read(struct file *file, char __user *buf,
+							 size_t count, loff_t *ppos)
+{
+	int len = 0;
+	ssize_t ret = 0;
+	char *buff;
+	
+	buff = kzalloc(100, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	
+	pr_debug("[Display] global_hbm mode is %d\n", g_global_hbm_mode);
+	
+	len += sprintf(buff, "%d\n", g_global_hbm_mode);
+	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
+	kfree(buff);
+	
+	return ret;
+}
+
+static struct file_operations global_hbm_mode_ops = {
+	.write = global_hbm_mode_write,
+	.read  = global_hbm_mode_read,
+};
+/* ASUS BSP Display --- */
+
 static int dsi_display_validate_split_link(struct dsi_display *display)
 {
 	int i, rc = 0;
@@ -5095,6 +6258,22 @@ static int dsi_display_bind(struct device *dev,
 
 	/* register te irq handler */
 	dsi_display_register_te_irq(display);
+
+	/* ASUS BSP Display +++ */
+	g_display = display;
+	mutex_init(&cmd_mutex);
+	proc_create(LCD_REGISTER_RW, 0640, NULL, &lcd_reg_rw_ops);
+	proc_create(LCD_UNIQUE_ID, 0444, NULL, &lcd_unique_id_ops);
+	proc_create(DISPLAY_BACKLIGHT, 0640, NULL, &display_bl_ops);
+	proc_create(HBM_MODE, 0666, NULL, &hbm_mode_ops);
+	proc_create(ALPM_MODE, 0666, NULL, &alpm_mode_ops);
+	if (strcmp(display->name, "dsi_r66451_fhd_dsc_cmd_dim_display") == 0) {
+		proc_create(DIM_MODE, 0666, NULL, &dim_mode_ops);	
+		proc_create(GLOBAL_HBM_MODE, 0666, NULL, &global_hbm_mode_ops);		
+	}
+	proc_create(LCD_STAGE, 0666, NULL, &lcd_stage_ops);	
+	display_recovery_workqueue = create_workqueue("display_wq");
+	/* ASUS BSP Display --- */
 
 	goto error;
 
@@ -6847,6 +8026,7 @@ int dsi_display_prepare(struct dsi_display *display)
 		return -EINVAL;
 	}
 
+	pr_err("[Display] display on +++ \n");
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&display->display_lock);
 
@@ -6986,6 +8166,20 @@ error_panel_post_unprep:
 error:
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	panelOff = false; /* ASUS BSP Display +++ */ /* asus jacob move here*/
+	pr_err("[Display] display on --- \n");
+	/* ASUS BSP Display +++ */
+	if (!readOSC) {
+		set_panel_osc(display);	
+
+		if (lastFps >= 60 && lastFps < 90)
+			dsi_panel_asusFps(display->panel, 2);
+		else if (lastFps >= 90 && lastFps < 120)
+			dsi_panel_asusFps(display->panel, 1);
+		else if (lastFps == 120)
+			dsi_panel_asusFps(display->panel, 0);
+	}
+	/* ASUS BSP Display --- */
 	return rc;
 }
 
@@ -7402,6 +8596,8 @@ int dsi_display_disable(struct dsi_display *display)
 		return -EINVAL;
 	}
 
+	pr_err("[Display] display off +++ \n");
+	panelOff = true; /* ASUS BSP Display +++ */
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&display->display_lock);
 
@@ -7517,6 +8713,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 	dsi_display_unregister_error_handler(display);
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	pr_err("[Display] display off --- \n");
 	return rc;
 }
 

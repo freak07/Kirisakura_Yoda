@@ -528,6 +528,9 @@ struct sched_entity {
 	 */
 	struct sched_avg		avg ____cacheline_aligned_in_smp;
 #endif
+
+	int binder_sender_pid;
+	int binder_sender_tid;
 };
 
 struct sched_load {

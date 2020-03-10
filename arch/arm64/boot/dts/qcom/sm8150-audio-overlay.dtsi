@@ -12,10 +12,12 @@
  */
 
 #include "sm8150-wcd.dtsi"
-#include "msm-wsa881x.dtsi"
+//#include "msm-wsa881x.dtsi" // ASUS_BSP Paul +++
 #include <dt-bindings/clock/qcom,audio-ext-clk.h>
 
 &snd_9360 {
+	status = "disabled"; // ASUS_BSP Paul +++
+
 	qcom,ext-disp-audio-rx = <1>;
 	qcom,wcn-btfm = <1>;
 	qcom,mi2s-audio-intf = <1>;
@@ -52,11 +54,13 @@
 	asoc-codec-names = "msm-stub-codec.1",
 			   "msm-ext-disp-audio-codec-rx";
 
+	/* ASUS_BSP Paul +++
 	qcom,wsa-max-devs = <1>;
 	qcom,wsa-devs = <&wsa881x_0211>, <&wsa881x_0212>,
 			<&wsa881x_0213>, <&wsa881x_0214>;
 	qcom,wsa-aux-dev-prefix = "SpkrLeft", "SpkrRight",
 				  "SpkrLeft", "SpkrRight";
+	*/
 };
 
 &snd_934x {
@@ -70,34 +74,20 @@
 		"AIF4 VI", "MCLK",
 		"RX_BIAS", "MCLK",
 		"MADINPUT", "MCLK",
-		"hifi amp", "LINEOUT1",
-		"hifi amp", "LINEOUT2",
+		"AMIC1", "MIC BIAS1",
+		"MIC BIAS1", "Handset Mic",
 		"AMIC2", "MIC BIAS2",
 		"MIC BIAS2", "Headset Mic",
-		"AMIC3", "MIC BIAS2",
-		"MIC BIAS2", "ANCRight Headset Mic",
-		"AMIC4", "MIC BIAS2",
-		"MIC BIAS2", "ANCLeft Headset Mic",
-		"AMIC5", "MIC BIAS3",
-		"MIC BIAS3", "Handset Mic",
-		"DMIC0", "MIC BIAS1",
-		"MIC BIAS1", "Digital Mic0",
-		"DMIC1", "MIC BIAS1",
-		"MIC BIAS1", "Digital Mic1",
-		"DMIC2", "MIC BIAS3",
-		"MIC BIAS3", "Digital Mic2",
-		"DMIC3", "MIC BIAS3",
-		"MIC BIAS3", "Digital Mic3",
-		"DMIC4", "MIC BIAS4",
-		"MIC BIAS4", "Digital Mic4",
-		"DMIC5", "MIC BIAS4",
-		"MIC BIAS4", "Digital Mic5",
-		"SpkrLeft IN", "SPK1 OUT",
-		"SpkrRight IN", "SPK2 OUT";
+		"AMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Second Mic",
+		"AMIC4", "MIC BIAS4",
+		"MIC BIAS4", "Third Mic",
+		"AMIC5", "MIC BIAS4",
+		"MIC BIAS4", "Fourth Mic";
 
 	qcom,msm-mbhc-hphl-swh = <1>;
 	qcom,msm-mbhc-gnd-swh = <1>;
-	qcom,msm-mbhc-hs-mic-max-threshold-mv = <1700>;
+	qcom,msm-mbhc-hs-mic-max-threshold-mv = <2550>; // ASUS_BSP Paul +++
 	qcom,msm-mbhc-hs-mic-min-threshold-mv = <50>;
 	qcom,hph-en0-gpio = <&tavil_hph_en0>;
 	qcom,hph-en1-gpio = <&tavil_hph_en1>;
@@ -107,11 +97,13 @@
 	asoc-codec-names = "msm-stub-codec.1",
 			   "msm-ext-disp-audio-codec-rx";
 
+	/* ASUS_BSP Paul +++
 	qcom,wsa-max-devs = <2>;
 	qcom,wsa-devs = <&wsa881x_70211>, <&wsa881x_70212>,
 			<&wsa881x_70213>, <&wsa881x_70214>;
 	qcom,wsa-aux-dev-prefix = "SpkrLeft", "SpkrRight",
 				  "SpkrLeft", "SpkrRight";
+	*/
 };
 
 &soc {
@@ -156,6 +148,7 @@
 	};
 
 	pahu_wdsp: wcd-dsp-mgr@1 {
+		status = "disabled"; // ASUS_BSP Paul +++
 		compatible = "qcom,wcd-dsp-mgr";
 		qcom,wdsp-components = <&wcd9360_cdc 0>,
 				       <&wcd_spi_0 1>,
@@ -183,6 +176,7 @@
 
 &slim_aud {
 	wcd9360_cdc: pahu_codec {
+		status = "disabled"; // ASUS_BSP Paul +++
 		compatible = "qcom,pahu-slim-pgd";
 		elemental-addr = [00 01 C0 02 17 02];
 
@@ -291,7 +285,7 @@
 					   "cdc-vdd-3v3";
 
 		qcom,cdc-micbias1-mv = <1800>;
-		qcom,cdc-micbias2-mv = <1800>;
+		qcom,cdc-micbias2-mv = <2800>; // ASUS_BSP Paul +++
 		qcom,cdc-micbias3-mv = <1800>;
 		qcom,cdc-micbias4-mv = <1800>;
 

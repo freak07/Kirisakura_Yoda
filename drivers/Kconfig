@@ -221,4 +221,16 @@ source "drivers/sensors/Kconfig"
 
 source "drivers/esoc/Kconfig"
 
+config TEXURA_USERDEBUG
+	bool "Texura userdebug module for ASUS ZS660KL"
+	depends on NLS_UTF8
+	default n
+	help
+	  Say Y here if you want support Texura userdebug module at ZE500KL
+	  Say N here if you want support Texura user module at ZE500KL
+
+#ASUS_BSP_Vibrator +++, mark_guo
+source "drivers/motor/tspdrv/Kconfig"
+#ASUS_BSP_Vibrator ---
+
 endmenu

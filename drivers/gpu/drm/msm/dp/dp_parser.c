@@ -268,7 +268,8 @@ static int dp_parser_gpio(struct dp_parser *parser)
 	struct device_node *of_node = dev->of_node;
 	struct dss_module_power *mp = &parser->mp[DP_CORE_PM];
 	static const char * const dp_gpios[] = {
-		"qcom,aux-en-gpio",
+		"qcom,aux-en-gpio",   // BSP SZ Lydia_Wu re-add for not controlled by ec_hid
+	    "qcom,aux-i2c-gpio",    // BSP SZ Lydia_Wu add for DisplayPort SR1
 		"qcom,aux-sel-gpio",
 		"qcom,usbplug-cc-gpio",
 	};

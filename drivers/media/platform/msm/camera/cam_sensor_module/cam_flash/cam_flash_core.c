@@ -18,7 +18,14 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
-static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
+#include "asus_flash.h"
+#define UINT uint32_t
+
+static int asus_bat_low = 0;
+int asus_flash_state = 0;  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
+static struct cam_flash_ctrl *asus_fctrl;
+
+int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 	bool regulator_enable)
 {
 	int rc = 0;
@@ -432,6 +439,10 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 		return -EINVAL;
 	}
 
+	if(asus_bat_low) {
+		CAM_DBG(CAM_FLASH, "asus_bat_low: %d",asus_bat_low);
+		return 0;
+	}
 	soc_private = (struct cam_flash_private_soc *)
 		flash_ctrl->soc_info.soc_private;
 
@@ -475,6 +486,8 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 			flash_ctrl->switch_trigger,
 			(enum led_brightness)LED_SWITCH_ON);
 
+	asus_flash_state = 1;  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
+
 	return 0;
 }
 
@@ -490,10 +503,14 @@ int cam_flash_off(struct cam_flash_ctrl *flash_ctrl)
 			(enum led_brightness)LED_SWITCH_OFF);
 
 	flash_ctrl->flash_state = CAM_FLASH_STATE_START;
+	asus_flash_state = 0;  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
+
+	flash_ctrl->ax_flash_type = 0;
+
 	return 0;
 }
 
-static int cam_flash_low(
+int cam_flash_low(
 	struct cam_flash_ctrl *flash_ctrl,
 	struct cam_flash_frame_setting *flash_data)
 {
@@ -512,13 +529,20 @@ static int cam_flash_low(
 
 	rc = cam_flash_ops(flash_ctrl, flash_data,
 		CAMERA_SENSOR_FLASH_OP_FIRELOW);
+
+	flash_ctrl->ax_flash_type = CAMERA_SENSOR_FLASH_OP_FIRELOW;
+	CAM_DBG(CAM_FLASH, "fctrl %p flash_type %d ax_flash_type %d",
+		flash_ctrl,
+		flash_ctrl->flash_type,
+		flash_ctrl->ax_flash_type);
 	if (rc)
 		CAM_ERR(CAM_FLASH, "Fire Torch failed: %d", rc);
 
+    CAM_DBG(CAM_FLASH, "Fire Torch low");
 	return rc;
 }
 
-static int cam_flash_high(
+int cam_flash_high(
 	struct cam_flash_ctrl *flash_ctrl,
 	struct cam_flash_frame_setting *flash_data)
 {
@@ -537,9 +561,16 @@ static int cam_flash_high(
 
 	rc = cam_flash_ops(flash_ctrl, flash_data,
 		CAMERA_SENSOR_FLASH_OP_FIREHIGH);
+	flash_ctrl->ax_flash_type = CAMERA_SENSOR_FLASH_OP_FIREHIGH;
+	CAM_DBG(CAM_FLASH, "fctrl %p flash_type %d ax_flash_type %d",
+		flash_ctrl,
+		flash_ctrl->flash_type,
+		flash_ctrl->ax_flash_type);
+
 	if (rc)
 		CAM_ERR(CAM_FLASH, "Fire Flash Failed: %d", rc);
 
+    CAM_DBG(CAM_FLASH, "Fire Torch high");
 	return rc;
 }
 
@@ -1506,7 +1537,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				rc = -EINVAL;
 				goto rel_cmd_buf;
 			}
-
+                        cancel_delay_flash();  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
 			flash_data->opcode = flash_operation_info->opcode;
 			flash_data->cmn_attr.count =
 				flash_operation_info->count;
@@ -1561,6 +1592,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				rc = -EINVAL;
 				goto rel_pkt_buf;
 			}
+                        cancel_delay_flash();  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
 			flash_operation_info =
 				(struct cam_flash_set_on_off *) cmd_buf;
 			if (!flash_operation_info) {
@@ -1842,4 +1874,27 @@ int cam_flash_apply_request(struct cam_req_mgr_apply_request *apply)
 	mutex_unlock(&fctrl->flash_mutex);
 
 	return rc;
+}
+
+int cam_flash_battery_low(int enable)
+{
+	asus_bat_low = enable;
+
+	if(asus_fctrl == NULL)
+		return -EINVAL;
+
+	mutex_lock(&asus_fctrl->flash_mutex);
+	if(asus_flash_state && enable)
+		cam_flash_off(asus_fctrl);
+	mutex_unlock(&asus_fctrl->flash_mutex);
+
+	CAM_DBG(CAM_FLASH, "enable:%d flash_state:%d",
+		asus_bat_low,asus_flash_state);
+	return 0;
+}
+
+void cam_flash_copy_fctrl(struct cam_flash_ctrl * fctrl)
+{
+	if(fctrl)
+		asus_fctrl = fctrl;
 }

@@ -185,6 +185,17 @@ struct icnss_vreg_info {
 	bool required;
 };
 
+/* ASUS_BSP+++ "add for the antenna switch power (LDO13A)" */
+struct antenna_switch_vreg {
+	struct regulator *reg;
+	const char *name;
+	u32 min_v;
+	u32 max_v;
+	u32 load_ua;
+	bool enabled;
+};
+/* ASUS_BSP--- "add for the antenna switch power (LDO13A)" */
+
 struct icnss_clk_info {
 	struct clk *handle;
 	const char *name;
@@ -312,6 +323,9 @@ struct icnss_priv {
 	struct icnss_driver_ops *ops;
 	struct ce_irq_list ce_irq_list[ICNSS_MAX_IRQ_REGISTRATIONS];
 	struct icnss_vreg_info *vreg_info;
+	/* ASUS_BSP+++ "add for the antenna switch power (LDO13A)" */
+	struct antenna_switch_vreg *vreg_antenna;
+	/* ASUS_BSP--- "add for the antenna switch power (LDO13A)" */
 	struct icnss_clk_info *clk_info;
 	u32 ce_irqs[ICNSS_MAX_IRQ_REGISTRATIONS];
 	phys_addr_t mem_base_pa;

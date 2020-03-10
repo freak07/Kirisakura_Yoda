@@ -889,6 +889,45 @@ static int usbhid_get_raw_report(struct hid_device *hid,
 	return ret;
 }
 
+//ASUS Lotta_Lu Add for gamepad vendor protocol +++++
+int asus_usbhid_set_raw_report(struct hid_device *hid, unsigned int reportnum,
+				 __u8 *buf, size_t count, unsigned char rtype)
+{
+	struct usbhid_device *usbhid = hid->driver_data;
+	struct usb_device *dev = hid_to_usb_dev(hid);
+	struct usb_interface *intf = usbhid->intf;
+	struct usb_host_interface *interface = intf->cur_altsetting;
+	int ret, skipped_report_id = 0;
+
+	/* Byte 0 is the report number. Report data starts at byte 1.*/
+	if ((rtype == HID_OUTPUT_REPORT) &&
+	    (hid->quirks & HID_QUIRK_SKIP_OUTPUT_REPORT_ID))
+		buf[0] = 0;
+	else
+		buf[0] = reportnum;
+
+	if (buf[0] == 0x0) {
+		/* Don't send the Report ID */
+		buf++;
+		count--;
+		skipped_report_id = 1;
+	}
+
+	ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+			HID_REQ_SET_REPORT,
+			USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+			((rtype - 1) << 8) | reportnum,
+			interface->desc.bInterfaceNumber, buf, count,
+			USB_CTRL_SET_TIMEOUT);
+	/* count also the report id, if this was a numbered report. */
+	if (ret > 0 && skipped_report_id)
+		ret++;
+
+	return ret;
+}
+EXPORT_SYMBOL(asus_usbhid_set_raw_report);
+//ASUS Lotta_Lu Add for gamepad vendor protocol -------
+
 static int usbhid_set_raw_report(struct hid_device *hid, unsigned int reportnum,
 				 __u8 *buf, size_t count, unsigned char rtype)
 {
@@ -1300,6 +1339,7 @@ static int usbhid_probe(struct usb_interface *intf, const struct usb_device_id *
 	size_t len;
 	int ret;
 
+	hid_info(intf, "[USB] usbhid_probe\n");
 	dbg_hid("HID probe called for ifnum %d\n",
 			intf->altsetting->desc.bInterfaceNumber);
 
@@ -1383,6 +1423,17 @@ static int usbhid_probe(struct usb_interface *intf, const struct usb_device_id *
 		goto err_free;
 	}
 
+	/* enable suspend/resume support for HID devices. */
+	if ((le16_to_cpu(dev->descriptor.idVendor) == 0x0BDA) &&
+	 ((le16_to_cpu(dev->descriptor.idProduct) == 0x480F)
+	||(le16_to_cpu(dev->descriptor.idProduct) == 0x4A41)
+	||(le16_to_cpu(dev->descriptor.idProduct) == 0x4A43)
+	||(le16_to_cpu(dev->descriptor.idProduct) == 0x4A45)
+	||(le16_to_cpu(dev->descriptor.idProduct) == 0x48F0))) {
+		hid_info(intf, "[USB] POGO HID enable autosuspend\n");
+		usb_enable_autosuspend(dev);
+	}
+
 	return 0;
 err_free:
 	kfree(usbhid);
@@ -1396,6 +1447,7 @@ static void usbhid_disconnect(struct usb_interface *intf)
 	struct hid_device *hid = usb_get_intfdata(intf);
 	struct usbhid_device *usbhid;
 
+	hid_info(intf, "[USB] usbhid_disconnect\n");
 	if (WARN_ON(!hid))
 		return;
 
@@ -1576,6 +1628,7 @@ static int hid_suspend(struct usb_interface *intf, pm_message_t message)
 		goto failed;
 	}
 	dev_dbg(&intf->dev, "suspend\n");
+	printk("[USB_PM] hid_suspend, dev=%s\n", dev_name(&intf->dev));
 	return status;
 
  failed:
@@ -1590,6 +1643,7 @@ static int hid_resume(struct usb_interface *intf)
 
 	status = hid_resume_common(hid, true);
 	dev_dbg(&intf->dev, "resume status %d\n", status);
+	printk("[USB_PM] hid_resume, dev=%s\n", dev_name(&intf->dev));
 	return 0;
 }
 

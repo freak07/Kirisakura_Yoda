@@ -274,6 +274,9 @@ struct dsi_display {
 	u32 te_source;
 };
 
+/* ASUS BSP Display +++ */
+int dsi_display_asusFps(struct dsi_display *display, int type);
+
 int dsi_display_dev_probe(struct platform_device *pdev);
 int dsi_display_dev_remove(struct platform_device *pdev);
 

@@ -75,7 +75,7 @@ static bool force_warm_reboot;
 
 static int in_panic;
 static struct kobject dload_kobj;
-static int dload_type = SCM_DLOAD_FULLDUMP;
+static int dload_type = SCM_DLOAD_MINIDUMP;
 static void *dload_mode_addr;
 static void *dload_type_addr;
 static bool dload_mode_enabled;
@@ -274,6 +274,7 @@ static void halt_spmi_pmic_arbiter(void)
 
 static void msm_restart_prepare(const char *cmd)
 {
+	ulong *printk_buffer_slot2_addr;
 	bool need_warm_reset = false;
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/* Write download mode flags if we're panic'ing
@@ -294,6 +295,12 @@ static void msm_restart_prepare(const char *cmd)
 	} else {
 		need_warm_reset = (get_dload_mode() ||
 				(cmd != NULL && cmd[0] != '\0'));
+	}
+	
+	if (!in_panic) {
+		// Normal reboot. Clean the printk buffer magic
+		printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
+		*printk_buffer_slot2_addr = 0;
 	}
 
 	if (force_warm_reboot)
@@ -330,6 +337,28 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_KEYS_CLEAR);
 			__raw_writel(0x7766550a, restart_reason);
+		// +++ ASUS_BSP: add asus reboot reason for ATD interface
+		} else if (!strcmp(cmd, "shutdown")) {
+		qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_SHUTDOWN);
+			__raw_writel(0x6f656d88, restart_reason);
+		} else if (!strcmp(cmd, "EnterShippingMode")) {
+		qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_SHIPMODE);
+			__raw_writel(0x6f656d43, restart_reason);
+		// --- ASUS_BSP: add asus reboot reason for ATD interface
+		// +++ ASUS_BSP: add for asus user unlock
+		} else if (!strncmp(cmd, "oem-08", 6)) {
+				qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_UNLOCK);
+			__raw_writel(0x6f656d08, restart_reason);
+		// --- ASUS_BSP: add for asus user unlock
+		// +++ ASUS_BSP : add for re-partition from gpt to partition:0 for add rawdump partition
+		} else if (!strncmp(cmd, "oem-78", 6)) {
+				qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_REPLACE_RAMDUMP);
+                        __raw_writel(0x6f656d78, restart_reason);
+		// --- ASUS_BSP : add for re-partition from gpt to partition:0 for add rawdump partition
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;
@@ -403,7 +432,16 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 
 static void do_msm_poweroff(void)
 {
-	pr_notice("Powering off the SoC\n");
+
+       ulong *printk_buffer_slot2_addr;
+
+        pr_notice("Powering off the SoC\n");
+       // Normal power off. Clean the printk buffer magic
+       printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
+       *printk_buffer_slot2_addr = 0;
+
+       printk(KERN_CRIT "Clean asus_global...\n");
+       flush_cache_all();
 
 	set_dload_mode(0);
 	scm_disable_sdi();

@@ -2564,6 +2564,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 
 	/* Optional to use the Rx pin as wakeup irq */
 	dev_port->wakeup_irq = platform_get_irq(pdev, 1);
+   dev_info(&pdev->dev, "wakeup_irq 0x%d\n", dev_port->wakeup_irq);
 	if ((dev_port->wakeup_irq < 0 && !is_console))
 		dev_info(&pdev->dev, "No wakeup IRQ configured\n");
 

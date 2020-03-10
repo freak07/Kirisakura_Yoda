@@ -19,6 +19,9 @@
 #define DBC_START_OFFSET 4
 #define EDID_DTD_LEN 18
 
+bool force_hdcp1x = false;
+bool is_station = false;
+
 enum data_block_types {
 	RESERVED,
 	AUDIO_DATA_BLOCK,
@@ -206,6 +209,7 @@ static void sde_edid_extract_vendor_id(struct sde_edid_ctrl *edid_ctrl)
 {
 	char *vendor_id;
 	u32 id_codes;
+	u32 proc_codes;
 
 	SDE_EDID_DEBUG("%s +", __func__);
 	if (!edid_ctrl) {
@@ -216,11 +220,26 @@ static void sde_edid_extract_vendor_id(struct sde_edid_ctrl *edid_ctrl)
 	vendor_id = edid_ctrl->vendor_id;
 	id_codes = ((u32)edid_ctrl->edid->mfg_id[0] << 8) +
 		edid_ctrl->edid->mfg_id[1];
+    proc_codes =((u32)edid_ctrl->edid->prod_code[1] << 4) +
+        (edid_ctrl->edid->prod_code[0] >> 4);
 
 	vendor_id[0] = 'A' - 1 + ((id_codes >> 10) & 0x1F);
 	vendor_id[1] = 'A' - 1 + ((id_codes >> 5) & 0x1F);
 	vendor_id[2] = 'A' - 1 + (id_codes & 0x1F);
 	vendor_id[3] = 0;
+
+    if (!strncmp(vendor_id, "AUS", 3) && proc_codes == 0x343)
+		force_hdcp1x = true;
+	else
+		force_hdcp1x = false;
+
+    if (!strncmp(vendor_id, "ANX", 3) && proc_codes == 0x753) {
+        is_station = true;
+        pr_err("ANX7530: station\n");
+    } else {
+        is_station = false;
+    }
+
 	SDE_EDID_DEBUG("vendor id is %s ", vendor_id);
 	SDE_EDID_DEBUG("%s -", __func__);
 }

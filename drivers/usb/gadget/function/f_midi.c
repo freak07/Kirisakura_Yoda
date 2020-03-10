@@ -1046,7 +1046,8 @@ static int f_midi_bind(struct usb_configuration *c, struct usb_function *f)
 		midi_function[i++] = (struct usb_descriptor_header *)
 				     &ms_in_desc;
 		f->ss_descriptors = usb_copy_descriptors(midi_function);
-		if (!f->ss_descriptors)
+		f->ssp_descriptors = usb_copy_descriptors(midi_function);
+		if (!f->ss_descriptors || !f->ssp_descriptors)
 			goto fail_f_midi;
 	}
 

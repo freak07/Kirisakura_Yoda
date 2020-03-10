@@ -220,6 +220,9 @@ static void dp_catalog_ctrl_phy_lane_cfg_v420(struct dp_catalog_ctrl *ctrl,
 	dp_write(catalog->exe_mode, io_data, DP_PHY_SPARE0_V420, info);
 }
 
+extern bool is_station;
+extern int lastFps;
+
 static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 		u8 v_level, u8 p_level)
 {
@@ -252,6 +255,11 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 	/* Enable MUX to use Cursor values from these registers */
 	value0 |= BIT(5);
 	value1 |= BIT(5);
+
+    if (is_station && lastFps == 120 && v_level == 0 && p_level == 0) {
+        value0 = 0x30;
+        pr_err("Change swing to 0x30 for v0p0\n");
+    }
 
 	/* Configure host and panel only if both values are allowed */
 	if (value0 != 0xFF && value1 != 0xFF) {

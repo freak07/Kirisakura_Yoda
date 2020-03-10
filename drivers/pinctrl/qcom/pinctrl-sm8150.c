@@ -1891,7 +1891,7 @@ static struct msm_dir_conn sm8150_dir_conn[] = {
 	{55, 536},
 	{56, 537},
 	{58, 538},
-	{60, 540},
+	//{60, 540},	ASUS_SZ_BSP Yadong: Remove GPIO60 for GPIO 129 (STATION KEY) BOTH EDGE WAKEUP SOURCE
 	{61, 541},
 	{68, 542},
 	{70, 543},

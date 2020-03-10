@@ -31,7 +31,8 @@ static long cam_csiphy_subdev_ioctl(struct v4l2_subdev *sd,
 		}
 		break;
 	default:
-		CAM_ERR(CAM_CSIPHY, "Wrong ioctl : %d", cmd);
+		//CAM_ERR(CAM_CSIPHY, "Wrong ioctl : %d", cmd);
+		CAM_ERR_RATE_LIMIT_CUSTOM(CAM_SYNC, 1, 5,"Wrong ioctl : %d", cmd);
 		break;
 	}
 

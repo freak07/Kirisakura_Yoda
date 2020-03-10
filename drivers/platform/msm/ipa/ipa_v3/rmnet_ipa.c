@@ -33,6 +33,8 @@
 #include "ipa_qmi_service.h"
 #include <linux/rmnet_ipa_fd_ioctl.h>
 #include <linux/ipa.h>
+#include <linux/ip.h> //yujoe
+#include <linux/ipv6.h> //yujoe
 #include <uapi/linux/net_map.h>
 #include <uapi/linux/msm_rmnet.h>
 #include <net/rmnet_config.h>
@@ -87,6 +89,7 @@ MODULE_PARM_DESC(outstanding_low, "Outstanding low");
 
 static void rmnet_ipa_free_msg(void *buff, u32 len, u32 type);
 static void rmnet_ipa_get_stats_and_update(void);
+extern int rmnet_irq_flag_function_rx(void);//ASUS_BSP + Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
 
 static int ipa3_wwan_add_ul_flt_rule_to_ipa(void);
 static int ipa3_wwan_del_ul_flt_rule_to_ipa(void);
@@ -1447,10 +1450,35 @@ static void apps_ipa_packet_receive_notify(void *priv,
 		struct sk_buff *skb = (struct sk_buff *)data;
 		int result;
 		unsigned int packet_len = skb->len;
+        //ASUS_BSP +++ Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
+        struct iphdr *ip4h;
+        struct ipv6hdr *ip6h;
+        unsigned char *map_payload;
+        unsigned char ip_version;
+        //ASUS_BSP --- Johnny yujoe  [Qcom][PS][][ADD]Print first IP address log when IRQ 57
 
 		IPAWANDBG_LOW("Rx packet was received");
+        //ASUS_BSP +++ Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
+        map_payload = (unsigned char *)(skb->data
+                + sizeof(struct rmnet_map_header_s));
+        ip_version = (*map_payload & 0xF0) >> 4;
+        //ASUS_BSP --- Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
 		skb->dev = IPA_NETDEV();
 		skb->protocol = htons(ETH_P_MAP);
+
+        //ASUS_BSP +++ Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
+        if (rmnet_irq_flag_function_rx() ==1 ){
+        	if (ip_version == 0x04){
+                        ip4h = (struct iphdr *) map_payload;
+                	pr_err_ratelimited("[QOO] First packet IP4 address src is %pI4",&ip4h->saddr);
+                	//ASUSEvtlog("[QOO] First packet IP4 address src is %pI4",&ip4h->saddr);
+        	}else if (ip_version == 0x06){
+                        ip6h = (struct ipv6hdr *) map_payload;
+                	pr_err_ratelimited("[QOO] First packet IP6 address src is %pI6",&ip6h->saddr);
+                	//ASUSEvtlog("[QOO] First packet IP6 address src is %pI6",&ip6h->saddr);
+                }
+        }
+         //ASUS_BSP --- Johnny yujoe [Qcom][PS][][ADD]Print first IP address log when IRQ 57
 
 		if (ipa3_rmnet_res.ipa_napi_enable) {
 			trace_rmnet_ipa_netif_rcv_skb3(dev->stats.rx_packets);

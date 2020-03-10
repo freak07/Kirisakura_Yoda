@@ -44,6 +44,28 @@
 #define DEFAULT_PANEL_PREFILL_LINES	25
 #define TICKS_IN_MICRO_SECOND		1000000
 
+extern void display_panel_off(int panel_off,int nolp);
+extern void rt_send_screen_suspend(void);
+
+/* ASUS BSP Display +++ */
+bool panelOff = false;
+char g_panel_osc_p20 = 0xa;
+extern char g_panel_osc_p2;
+extern int lastFps;
+extern bool g_enter_AOD;
+extern int g_alpm_bl;
+extern int g_bl_delay;
+/* ASUS BSP Display --- */
+// BSP SZ +++ Lydia_Wu add for Station
+extern int g_station_hbm_mode;
+int lastBL = 1023;
+extern int ec_i2c_set_display_fps(char fps);
+// BSP SZ --- Lydia_Wu add for Station
+
+bool panel_on;
+EXPORT_SYMBOL(panel_on);
+extern int ingore_reset;
+
 enum dsi_dsc_ratio_type {
 	DSC_8BPC_8BPP,
 	DSC_10BPC_8BPP,
@@ -214,6 +236,14 @@ int dsi_dsc_create_pps_buf_cmd(struct msm_display_dsc_info *dsc, char *buf,
 
 	return 128;
 }
+
+// BSP SZ +++ Lydia_Wu add for Station back light
+int get_last_backlight_value(void)
+{
+	return lastBL;
+}
+EXPORT_SYMBOL(get_last_backlight_value);
+// BSP SZ --- Lydia_Wu add for Station back light
 
 static int dsi_panel_vreg_get(struct dsi_panel *panel)
 {
@@ -430,17 +460,20 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 	return rc;
 }
 
-
+extern void asus_dp_change_state(bool mode, int type);
 static int dsi_panel_power_on(struct dsi_panel *panel)
 {
 	int rc = 0;
 
+	pr_err("[Display] panel on +++\n");
+
+#ifdef ASUS_DISPLAY
 	rc = dsi_pwr_enable_regulator(&panel->power_info, true);
 	if (rc) {
 		pr_err("[%s] failed to enable vregs, rc=%d\n", panel->name, rc);
 		goto exit;
 	}
-
+#endif
 	rc = dsi_panel_set_pinctrl_state(panel, true);
 	if (rc) {
 		pr_err("[%s] failed to set pinctrl, rc=%d\n", panel->name, rc);
@@ -453,6 +486,7 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 		goto error_disable_gpio;
 	}
 
+    asus_dp_change_state(true, 1);
 	goto exit;
 
 error_disable_gpio:
@@ -468,12 +502,24 @@ error_disable_vregs:
 	(void)dsi_pwr_enable_regulator(&panel->power_info, false);
 
 exit:
+        	
+	if (g_ASUS_hwID >= ZS660KL_ER1){
+	  panel_on = true;
+	  display_panel_off(0,0);
+	  if (ingore_reset == 1) { 
+	    panel_on = false; //touch not reset
+	  }
+	}
+
+	pr_err("[Display] panel on ---\n");
 	return rc;
 }
 
 static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
+
+	pr_err("[Display] panel off +++\n");
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
@@ -490,10 +536,24 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 		       rc);
 	}
 
+	if (g_ASUS_hwID >= ZS660KL_ER1){
+	  panel_on = false;
+	  display_panel_off(1,0);
+	}
+
+	rt_send_screen_suspend();
+
+#ifdef ASUS_DISPLAY
 	rc = dsi_pwr_enable_regulator(&panel->power_info, false);
 	if (rc)
 		pr_err("[%s] failed to enable vregs, rc=%d\n", panel->name, rc);
+#endif 
 
+    // BSP SZ +++ Lydia_Wu add for Station
+	asus_dp_change_state(false, 1);
+	g_station_hbm_mode = 0;
+	// BSP SZ --- Lydia_Wu add for Station HBM
+	pr_err("[Display] panel off ---\n");
 	return rc;
 }
 static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
@@ -607,23 +667,44 @@ static int dsi_panel_wled_register(struct dsi_panel *panel,
 	return 0;
 }
 
+extern int ec_i2c_pd_set_display_bl(char* brightness); // BSP SZ +++ Lydia_Wu add for Station back light
 static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	u32 bl_lvl)
 {
 	int rc = 0;
 	struct mipi_dsi_device *dsi;
+	char bl_ch[2]; // BSP SZ +++ Lydia_Wu add for Station back light
 
 	if (!panel || (bl_lvl > 0xffff)) {
 		pr_err("invalid params\n");
 		return -EINVAL;
 	}
 
+	/* ASUS BSP Display +++ */
+	if (g_enter_AOD && bl_lvl == 256)
+		bl_lvl = g_alpm_bl;
+
 	dsi = &panel->mipi_device;
+
+    // BSP SZ +++ Lydia_Wu add for Station back light
+    bl_ch[0]=(char)(bl_lvl & 0xFF);
+    bl_ch[1]=(char)((bl_lvl >> 8) & 0xFF);
+
+    pr_debug("bl low:%x high:%x", bl_ch[0],bl_ch[1]);
+    ec_i2c_pd_set_display_bl((char*)bl_ch);
+
+    if (bl_lvl != 0) lastBL = (int)bl_lvl;
+    // BSP SZ --- Lydia_Wu add for Station back light
 
 	rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
 	if (rc < 0)
 		pr_err("failed to update dcs backlight:%d\n", bl_lvl);
 
+	/* ASUS BSP Display +++ */
+	pr_err("[Display] set bl=%d\n", bl_lvl);
+	if (g_bl_delay!=0)
+		udelay(g_bl_delay);
+	
 	return rc;
 }
 
@@ -1703,6 +1784,18 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command",
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
+	/* ASUS BSP Display +++ */
+	"qcom,mdss-dsi-120-command",
+	"qcom,mdss-dsi-90-command",
+	"qcom,mdss-dsi-60-command",
+	"qcom,mdss-dsi-osc-command",
+	"qcom,mdss-dsi-hbm-on-command",
+	"qcom,mdss-dsi-hbm-off-command",
+	"qcom,mdss-dsi-global-hbm-on-command",
+	"qcom,mdss-dsi-global-hbm-off-command",
+	"qcom,mdss-dsi-ir-on-command",
+	"qcom,mdss-dsi-ir-off-command",
+	/* ASUS BSP Display --- */
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1729,6 +1822,18 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
+	/* ASUS BSP Display +++ */
+	"qcom,mdss-dsi-120-command-state",
+	"qcom,mdss-dsi-90-command-state",
+	"qcom,mdss-dsi-60-command-state",
+	"qcom,mdss-dsi-osc-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm-off-command-state",
+	"qcom,mdss-dsi-global-hbm-on-command-state",
+	"qcom,mdss-dsi-global-hbm-off-command-state",
+	"qcom,mdss-dsi-ir-on-command-state",
+	"qcom,mdss-dsi-ir-off-command-state",
+	/* ASUS BSP Display --- */
 };
 
 static int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -3757,6 +3862,8 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
 		       panel->name, rc);
+	rt_send_screen_suspend();
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -3779,6 +3886,9 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
 		       panel->name, rc);
+
+	rt_send_screen_suspend();
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -3809,6 +3919,7 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4064,6 +4175,14 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	else
 		panel->panel_initialized = true;
 	mutex_unlock(&panel->panel_lock);
+	/* ASUS BSP Display +++ */
+	/*if (lastFps >= 60 && lastFps < 90)
+		dsi_panel_asusFps(panel, 2);
+	else if (lastFps >= 90 && lastFps < 120)
+		dsi_panel_asusFps(panel, 1);
+	else if (lastFps == 120)
+		dsi_panel_asusFps(panel, 0);*/
+	/* ASUS BSP Display --- */
 	return rc;
 }
 
@@ -4199,3 +4318,211 @@ error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
+/* ASUS BSP Display +++ */
+/* type 
+ * 0: 120 fps
+ * 1: 90  fps
+ * 2: 60  fps
+*/
+int dsi_panel_asusFps(struct dsi_panel *panel, int type)
+{
+	int rc = 0;
+	enum dsi_cmd_set_type cmd_type;
+
+	if (!panel || !panel->dfps_caps.dfps_support || panelOff) {
+		pr_err("[Display] invalid\n");
+		return -EINVAL;
+	}
+	ec_i2c_set_display_fps(type);
+	pr_err("[Display] set %d command.\n", lastFps);
+	mutex_lock(&panel->panel_lock);
+	
+	if (type == 2)
+		cmd_type = DSI_CMD_SET_60;
+	else if (type == 1)
+		cmd_type = DSI_CMD_SET_90;		
+	else
+		cmd_type = DSI_CMD_SET_120;
+
+	rc = dsi_panel_tx_cmd_set(panel, cmd_type);
+	if (rc) {
+		pr_err("[%s] failed to send DSI_CMD_SET_ASUS cmds, rc=%d\n",
+			panel->name, rc);
+	}
+
+	rc = dsi_panel_set_osc(panel);
+	if (rc) {
+		pr_err("[%s] failed to send OSC cmds, rc=%d\n",
+			panel->name, rc);
+	}
+
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_set_osc(struct dsi_panel *panel)
+{
+	int rc = 0;
+	struct dsi_display_mode *mode;
+	struct dsi_cmd_desc *cmds;
+	u32 count;
+	
+	static char set_cmd[3] = {0xE4, 0x00, 0x00};
+	struct mipi_dsi_msg tcon_cmd = {0, 0x39, 0, 0, 0, sizeof(set_cmd), set_cmd, 0, NULL};
+	
+
+	if (!panel || !panel->cur_mode) {
+		pr_err("[Display] invalid\n");
+		return -EINVAL;
+	}
+	
+	mode = panel->cur_mode;
+	cmds = mode->priv_info->cmd_sets[DSI_CMD_SET_OSC].cmds;
+	count = mode->priv_info->cmd_sets[DSI_CMD_SET_OSC].count;
+	cmds++;
+	cmds++;
+	
+	if (lastFps == 120)
+		set_cmd[2] = g_panel_osc_p20;
+	else
+		set_cmd[2] = g_panel_osc_p20; /* for 60 & 90 fps */
+		
+	cmds->msg = tcon_cmd;
+
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_OSC);
+	if (rc) {
+		pr_err("[%s] failed to send DSI_CMD_SET_ASUS cmds, rc=%d\n",
+			panel->name, rc);
+	}
+
+	return rc;
+}
+
+int dsi_panel_set_idle(struct dsi_panel *panel, bool enter)
+{
+	int rc = 0;
+
+	if (!panel) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	if (enter) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
+			       panel->name, rc);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
+			       panel->name, rc);
+		else 
+			g_enter_AOD = false;
+	}
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+void dsi_panel_bl_delay()
+{
+	if (lastFps >= 60 && lastFps < 90)
+		g_bl_delay = 140000;
+	else if (lastFps >= 90 && lastFps < 120)
+		g_bl_delay = 90000;
+	else if (lastFps == 120)
+		g_bl_delay = 65000;
+}
+
+int dsi_panel_set_hbm(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	if (enable) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_HBM_ON cmd, rc=%d\n",
+			       panel->name, rc);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_OFF);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_HBM_OFF cmd, rc=%d\n",
+			       panel->name, rc);
+	}
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_set_global_hbm(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	if (enable) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_GLOBAL_HBM_ON);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_GLOBAL_HBM_ON cmd, rc=%d\n",
+			       panel->name, rc);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_GLOBAL_HBM_OFF);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_GLOBAL_HBM_OFF cmd, rc=%d\n",
+			       panel->name, rc);
+	}
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_set_ir_drop(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	if (enable) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_IR_ON);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_IR_ON cmd, rc=%d\n",
+			       panel->name, rc);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_IR_OFF);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_IR_OFF cmd, rc=%d\n",
+			       panel->name, rc);
+	}
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+/* ASUS BSP Display --- */

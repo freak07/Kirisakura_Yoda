@@ -21,6 +21,7 @@
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
+extern int is_suspend; // ASUS_BSP : For skip sync when suspend
 /*
  * Do the filesystem syncing work. For simple filesystems
  * writeback_inodes_sb(sb) just dirties buffers with inodes so we have to
@@ -70,23 +71,51 @@ EXPORT_SYMBOL(sync_filesystem);
 
 static void sync_inodes_one_sb(struct super_block *sb, void *arg)
 {
-	if (!sb_rdonly(sb))
+	if ((!memcmp(sb->s_id,"sda7", 4) || !memcmp(sb->s_id,"sda12", 5) || !memcmp(sb->s_id,"sda14", 5)) && is_suspend){
+		//printk("[SYS_SYNC] skip sync_inodes_one_sb, s_id %s\n", sb->s_id);
+		return;
+	}
+
+	if (!sb_rdonly(sb)){
+		//printk("[SYS_SYNC] do sync_inodes_one_sb, s_id %s\n", sb->s_id);
 		sync_inodes_sb(sb);
+	}
 }
 
 static void sync_fs_one_sb(struct super_block *sb, void *arg)
 {
-	if (!sb_rdonly(sb) && sb->s_op->sync_fs)
+	if ((!memcmp(sb->s_id,"sda7", 4) || !memcmp(sb->s_id,"sda12", 5) || !memcmp(sb->s_id,"sda14", 5)) && is_suspend){
+		//printk("[SYS_SYNC] skip sync_fs_one_sb, s_id %s\n", sb->s_id);
+		return;
+	}
+
+	if (!sb_rdonly(sb) && sb->s_op->sync_fs){
+		//printk("[SYS_SYNC] do sync_fs_one_sb, s_id %s\n", sb->s_id);
 		sb->s_op->sync_fs(sb, *(int *)arg);
+	}
 }
 
 static void fdatawrite_one_bdev(struct block_device *bdev, void *arg)
 {
+	if ((!memcmp(bdev->bd_disk->disk_name,"sda", 3)) && is_suspend){
+		if ( bdev->bd_partno == 7 || bdev->bd_partno == 12 | bdev->bd_partno == 14 )
+			//printk("[SYS_SYNC] skip fdatawrite_one_bdev, %s%d\n", bdev->bd_disk->disk_name, bdev->bd_partno);
+		return;
+	}
+
+	//printk("[SYS_SYNC] fdatawrite_one_bdev, disk_name %s, bd_partno %d, bdev->bd_super->s_id %s\n", bdev->bd_disk->disk_name, bdev->bd_partno, bdev->bd_super->s_id);
 	filemap_fdatawrite(bdev->bd_inode->i_mapping);
 }
 
 static void fdatawait_one_bdev(struct block_device *bdev, void *arg)
 {
+	if ((!memcmp(bdev->bd_disk->disk_name,"sda", 3)) && is_suspend){
+		if ( bdev->bd_partno == 7 || bdev->bd_partno == 12 | bdev->bd_partno == 14 )
+			//printk("[SYS_SYNC] skip fdatawait_one_bdev, %s%d\n", bdev->bd_disk->disk_name, bdev->bd_partno);
+		return;
+	}
+
+	//printk("[SYS_SYNC] fdatawait_one_bdev , disk_name %s, bd_partno %d, bdev->bd_super->s_id %s\n", bdev->bd_disk->disk_name, bdev->bd_partno, bdev->bd_super->s_id);
 	/*
 	 * We keep the error status of individual mapping so that
 	 * applications can catch the writeback error using fsync(2).
@@ -109,14 +138,25 @@ SYSCALL_DEFINE0(sync)
 {
 	int nowait = 0, wait = 1;
 
+	if (is_suspend)
+		printk("[SYS_SYNC] SYSCALL sync:sync_inodes_one_sb\n");
 	wakeup_flusher_threads(0, WB_REASON_SYNC);
 	iterate_supers(sync_inodes_one_sb, NULL);
+	if (is_suspend)
+		printk("[SYS_SYNC] SYSCALL sync:sync_fs_one_sb \n");
 	iterate_supers(sync_fs_one_sb, &nowait);
 	iterate_supers(sync_fs_one_sb, &wait);
+	if (is_suspend)
+		printk("[SYS_SYNC] SYSCALL sync:fdatawrite_one_bdev\n");
 	iterate_bdevs(fdatawrite_one_bdev, NULL);
 	iterate_bdevs(fdatawait_one_bdev, NULL);
+	if (is_suspend)
+		printk("[SYS_SYNC] SYSCALL sync:laptop_sync_completion\n");
 	if (unlikely(laptop_mode))
 		laptop_sync_completion();
+
+	if (is_suspend)
+		printk("[SYS_SYNC] SYSCALL sync:done\n");
 	return 0;
 }
 

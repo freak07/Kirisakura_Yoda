@@ -403,6 +403,34 @@
 			};
 		};
 
+		/*  ASUS_BSP +++ KEY  */
+		tlmm_gpio_key {
+			gpio_key_active: gpio_key_active {
+				mux {
+					pins = "gpio134" , "gpio97";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio134" , "gpio97";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+
+			gpio_key_suspend: gpio_key_suspend {
+				mux {
+					pins = "gpio134" , "gpio97";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio134" , "gpio97";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+                };
 		pcie1 {
 			pcie1_clkreq_default: pcie1_clkreq_default {
 				mux {
@@ -471,6 +499,33 @@
 					bias-pull-down;
 				};
 			};
+			wifi_ant_switch_1: wifi_ant_switch_1 {
+				mux {
+					pins = "gpio64", "gpio67", "gpio80";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio64", "gpio67", "gpio80";
+					bias-pull-up;
+					output-high;
+				};
+			};
+
+			wifi_ant_switch_2: wifi_ant_switch_2 {
+				mux {
+					pins = "gpio79";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio79";
+					bias-pull-up;
+					output-high;
+				};
+			};
+
+
 		};
 
 		pcie_ep {
@@ -595,7 +650,7 @@
 
 				config {
 					pins = "gpio114", "gpio115";
-					drive-strength = <2>;
+					drive-strength = <8>;
 					bias-disable;
 				};
 			};
@@ -971,7 +1026,7 @@
 
 				config {
 					pins = "gpio98", "gpio99";
-					drive-strength = <2>;
+					drive-strength = <8>;
 					bias-disable;
 				};
 			};
@@ -1208,14 +1263,12 @@
 		qupv3_se9_spi_pins: qupv3_se9_spi_pins {
 			qupv3_se9_spi_active: qupv3_se9_spi_active {
 				mux {
-					pins = "gpio39", "gpio40", "gpio41",
-								"gpio42";
+					pins = "gpio39", "gpio40", "gpio41", "gpio42";
 					function = "qup9";
 				};
 
 				config {
-					pins = "gpio39", "gpio40", "gpio41",
-								"gpio42";
+					pins = "gpio39", "gpio40", "gpio41", "gpio42";
 					drive-strength = <6>;
 					bias-disable;
 				};
@@ -1223,14 +1276,12 @@
 
 			qupv3_se9_spi_sleep: qupv3_se9_spi_sleep {
 				mux {
-					pins = "gpio39", "gpio40", "gpio41",
-								"gpio42";
+					pins = "gpio39", "gpio40", "gpio41", "gpio42";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio39", "gpio40", "gpio41",
-								"gpio42";
+					pins = "gpio39", "gpio40", "gpio41", "gpio42";
 					drive-strength = <6>;
 					bias-disable;
 				};
@@ -1547,12 +1598,12 @@
 		qupv3_se15_i2c_pins: qupv3_se15_i2c_pins {
 			qupv3_se15_i2c_active: qupv3_se15_i2c_active {
 				mux {
-					pins = "gpio27", "gpio28";
+					pins = "gpio28";
 					function = "qup15";
 				};
 
 				config {
-					pins = "gpio27", "gpio28";
+					pins = "gpio28";
 					drive-strength = <2>;
 					bias-disable;
 				};
@@ -1560,12 +1611,12 @@
 
 			qupv3_se15_i2c_sleep: qupv3_se15_i2c_sleep {
 				mux {
-					pins = "gpio27", "gpio28";
+					pins = "gpio28";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio27", "gpio28";
+					pins = "gpio28";
 					drive-strength = <2>;
 					bias-pull-up;
 				};
@@ -1575,13 +1626,13 @@
 		qupv3_se15_spi_pins: qupv3_se15_spi_pins {
 			qupv3_se15_spi_active: qupv3_se15_spi_active {
 				mux {
-					pins = "gpio27", "gpio28", "gpio29",
+					pins = "gpio28", "gpio29",
 								"gpio30";
 					function = "qup15";
 				};
 
 				config {
-					pins = "gpio27", "gpio28", "gpio29",
+					pins = "gpio28", "gpio29",
 								"gpio30";
 					drive-strength = <6>;
 					bias-disable;
@@ -1590,13 +1641,13 @@
 
 			qupv3_se15_spi_sleep: qupv3_se15_spi_sleep {
 				mux {
-					pins = "gpio27", "gpio28", "gpio29",
+					pins = "gpio28", "gpio29",
 								"gpio30";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio27", "gpio28", "gpio29",
+					pins = "gpio28", "gpio29",
 								"gpio30";
 					drive-strength = <6>;
 					bias-disable;
@@ -3877,6 +3928,20 @@
 			};
 		};
 
+		camera_vdig_en_default: camera_vdig_en_default {
+			/*  vdig  */
+			mux {
+				pins = "gpio33";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio33";
+				bias-disable; /* No PULL */
+				drive-strength = <2>; /* 2 MA */
+			};
+		};
+
 		camera_vana_en_default: camera_vana_en_default {
 			 /*  VANA ELDO2 */
 			 mux {
@@ -3900,6 +3965,19 @@
 
 			config {
 				pins = "gpio28";
+				bias-disable; /* No PULL */
+				drive-strength = <2>; /* 2 MA */
+			};
+		};
+		cam_sensor_vcm_rear: cam_sensor_vcm_rear {
+			/* VCM REAR1 */
+			mux {
+				pins = "gpio166";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio166";
 				bias-disable; /* No PULL */
 				drive-strength = <2>; /* 2 MA */
 			};
@@ -4179,12 +4257,12 @@
 		cci3_active: cci3_active {
 			mux {
 				/* CLK, DATA */
-				pins = "gpio33","gpio34";
+				pins = "gpio34";
 				function = "cci_i2c";
 			};
 
 			config {
-				pins = "gpio33","gpio34";
+				pins = "gpio34";
 				bias-pull-up; /* PULL UP*/
 				drive-strength = <2>; /* 2 MA */
 			};
@@ -4193,12 +4271,12 @@
 		cci3_suspend: cci3_suspend {
 			mux {
 				/* CLK, DATA */
-				pins = "gpio33","gpio34";
+				pins = "gpio34";
 				function = "cci_i2c";
 			};
 
 			config {
-				pins = "gpio33","gpio34";
+				pins = "gpio34";
 				bias-pull-down; /* PULL DOWN */
 				drive-strength = <2>; /* 2 MA */
 			};

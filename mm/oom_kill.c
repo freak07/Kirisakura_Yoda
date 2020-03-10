@@ -1120,12 +1120,12 @@ void dump_killed_info(struct task_struct *selected)
 {
 	int selected_tasksize = get_mm_rss(selected->mm);
 
-	pr_info_ratelimited("Killing '%s' (%d), adj %hd,\n"
-			"   to free %ldkB on behalf of '%s' (%d)\n"
-			"   Free CMA is %ldkB\n"
-			"   Total reserve is %ldkB\n"
-			"   Total free pages is %ldkB\n"
-			"   Total file cache is %ldkB\n",
+	printk("Killing '%s' (%d), adj %hd,\r\n"
+			"   to free %ldkB on behalf of '%s' (%d)\r\n"
+			"   Free CMA is %ldkB\r\n"
+			"   Total reserve is %ldkB\r\n"
+			"   Total free pages is %ldkB\r\n"
+			"   Total file cache is %ldkB\r\n",
 			selected->comm, selected->pid,
 			selected->signal->oom_score_adj,
 			selected_tasksize * (long)(PAGE_SIZE / 1024),

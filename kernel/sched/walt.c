@@ -2930,6 +2930,7 @@ unsigned long thermal_cap(int cpu)
 	return thermal_cap_cpu[cpu] ?: SCHED_CAPACITY_SCALE;
 }
 
+extern u32 therm_cpu7_max_limit;
 unsigned long do_thermal_cap(int cpu, unsigned long thermal_max_freq)
 {
 	struct sched_domain *sd;
@@ -2950,12 +2951,17 @@ unsigned long do_thermal_cap(int cpu, unsigned long thermal_max_freq)
 		max_cap[cpu] = sg->sge->cap_states[nr_cap_states - 1].cap;
 		rcu_read_unlock();
 	}
-
-	if (cpu_max_table_freq[cpu])
-		return div64_ul(thermal_max_freq * max_cap[cpu],
-				cpu_max_table_freq[cpu]);
-	else
+	if (cpu_max_table_freq[cpu]){
+		if(cpu==7){
+			return div64_ul(therm_cpu7_max_limit * max_cap[cpu],
+					cpu_max_table_freq[cpu]);
+		}else{
+			return div64_ul(thermal_max_freq * max_cap[cpu],
+					cpu_max_table_freq[cpu]);
+		}
+	}else{
 		return rq->cpu_capacity_orig;
+	}
 }
 
 static DEFINE_SPINLOCK(cpu_freq_min_max_lock);

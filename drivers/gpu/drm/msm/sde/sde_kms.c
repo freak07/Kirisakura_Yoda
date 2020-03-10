@@ -2760,6 +2760,7 @@ retry:
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct drm_crtc_state *crtc_state;
 		uint64_t lp;
+		bool asus_skip_doze = false; // ASUS BSP Display +++
 
 		if (!conn->state || !conn->state->crtc ||
 				conn->dpms != DRM_MODE_DPMS_ON ||
@@ -2767,7 +2768,7 @@ retry:
 			continue;
 
 		lp = sde_connector_get_lp(conn);
-		if (lp == SDE_MODE_DPMS_LP1) {
+		if (asus_skip_doze/*lp == SDE_MODE_DPMS_LP1*/) { // ASUS BSP Display +++
 			/* transition LP1->LP2 on pm suspend */
 			ret = sde_connector_set_property_for_commit(conn, state,
 					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
@@ -2779,7 +2780,7 @@ retry:
 			}
 		}
 
-		if (lp != SDE_MODE_DPMS_LP2) {
+		if (asus_skip_doze/*lp != SDE_MODE_DPMS_LP2*/) { // ASUS BSP Display +++
 			/* force CRTC to be inactive */
 			crtc_state = drm_atomic_get_crtc_state(state,
 					conn->state->crtc);
@@ -2800,6 +2801,7 @@ retry:
 	/* check for nothing to do */
 	if (num_crtcs == 0) {
 		DRM_DEBUG("all crtcs are already in the off state\n");
+		pr_err("[Display] all crtcs are already in the off state\n");		
 		sde_kms->suspend_block = true;
 		goto unlock;
 	}

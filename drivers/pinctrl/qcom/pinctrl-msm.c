@@ -621,6 +621,7 @@ static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
+                if (i != 0 && i !=1 && i != 2 && i !=3 && i != 4 && i !=5 && i != 6 && i !=7 && i !=126 && i !=127 && i !=128 && i !=129)
 		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}

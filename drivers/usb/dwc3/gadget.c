@@ -41,6 +41,20 @@ static int dwc3_gadget_wakeup_int(struct dwc3 *dwc);
 static int __dwc3_gadget_start(struct dwc3 *dwc);
 static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc);
 
+#ifdef CONFIG_USB_EC_DRIVER
+extern uint8_t gDongleType;
+#else
+static uint8_t gDongleType;
+#endif
+
+enum POGO_ID {
+	NO_INSERT = 0,
+	INBOX,
+	STATION,
+	DT,
+	OTHER,
+};
+
 /**
  * dwc3_gadget_set_test_mode - enables usb2 test modes
  * @dwc: pointer to our context structure
@@ -204,7 +218,7 @@ void dwc3_ep_inc_deq(struct dwc3_ep *dep)
 int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc, struct dwc3_ep *dep)
 {
 	int		fifo_size, mdwidth, max_packet = 1024;
-	int		tmp, mult = 1, fifo_0_start;
+	int		tmp, mult = 1, size;
 
 	if (!dwc->needs_fifo_resize || !dwc->tx_fifo_size)
 		return 0;
@@ -239,11 +253,13 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc, struct dwc3_ep *dep)
 	fifo_size = DIV_ROUND_UP(tmp, mdwidth);
 	dep->fifo_depth = fifo_size;
 
-	/* Check if TXFIFOs start at non-zero addr */
-	tmp = dwc3_readl(dwc->regs, DWC3_GTXFIFOSIZ(0));
-	fifo_0_start = DWC3_GTXFIFOSIZ_TXFSTADDR(tmp);
+	size = dwc3_readl(dwc->regs, DWC3_GTXFIFOSIZ(0));
+	if (dwc3_is_usb31(dwc))
+		size = DWC31_GTXFIFOSIZ_TXFDEF(size);
+	else
+		size = DWC3_GTXFIFOSIZ_TXFDEF(size);
 
-	fifo_size |= (fifo_0_start + (dwc->last_fifo_depth << 16));
+	fifo_size |= (size + (dwc->last_fifo_depth << 16));
 	if (dwc3_is_usb31(dwc))
 		dwc->last_fifo_depth += DWC31_GTXFIFOSIZ_TXFDEF(fifo_size);
 	else
@@ -2319,6 +2335,9 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 {
 	struct dwc3 *dwc = gadget_to_dwc(_gadget);
 	unsigned long flags;
+	char *udc1[2] = {"UDC_NAME=a600000.dwc3", NULL};
+	char *udc2[2] = {"UDC_NAME=a800000.dwc3", NULL};
+	char *udc_name[2];
 
 	if (dwc->dr_mode != USB_DR_MODE_OTG)
 		return -EPERM;
@@ -2326,6 +2345,21 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	is_active = !!is_active;
 
 	dbg_event(0xFF, "VbusSess", is_active);
+
+	if (is_active) {
+
+		if (!strcmp(&udc1[0][9], kobject_name(&dwc->dev->kobj))) {
+			udc_name[0] = udc1[0];
+			udc_name[1] = udc1[1];
+		} else {
+			udc_name[0] = udc2[0];
+			udc_name[1] = udc2[1];
+		}
+
+		dev_info(dwc->dev, "udc event : %s\n", udc_name[0]);
+		kobject_uevent_env(&dwc->dev->kobj, KOBJ_CHANGE, udc_name);
+	}
+
 	spin_lock_irqsave(&dwc->lock, flags);
 
 	/* Mark that the vbus was powered */
@@ -2604,11 +2638,11 @@ static int dwc3_gadget_init_endpoints(struct dwc3 *dwc, u8 total)
 		dep->regs = dwc->regs + DWC3_DEP_BASE(epnum);
 		dwc->eps[epnum] = dep;
 
-		/* Reserve EPs at the end for GSI */
-		if (!direction && num > out_count - NUM_GSI_OUT_EPS - 1) {
+		/* Reserve EPs at the enpt num 7,8 for GSI */
+		if (!direction && num == 7 ) {
 			snprintf(dep->name, sizeof(dep->name), "gsi-epout");
 			dep->endpoint.ep_type = EP_TYPE_GSI;
-		} else if (direction && num > in_count - NUM_GSI_IN_EPS - 1) {
+		} else if (direction && (num == 7 || num == 8)) {
 			snprintf(dep->name, sizeof(dep->name), "gsi-epin");
 			dep->endpoint.ep_type = EP_TYPE_GSI;
 		} else {
@@ -3162,7 +3196,7 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 	int			reg;
 
 	dbg_event(0xFF, "DISCONNECT INT", 0);
-	dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
+	dev_info(dwc->dev, "Notify OTG from %s\n", __func__);
 	dwc->b_suspend = false;
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_OTG_EVENT, 0);
 
@@ -3224,7 +3258,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	}
 
 	dbg_event(0xFF, "BUS RESET", 0);
-	dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
+	dev_info(dwc->dev, "Notify OTG from %s\n", __func__);
 	dwc->b_suspend = false;
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_OTG_EVENT, 0);
 
@@ -3408,7 +3442,7 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup)
 {
 	bool perform_resume = true;
 
-	dev_dbg(dwc->dev, "%s\n", __func__);
+	dev_info(dwc->dev, "%s\n", __func__);
 
 	dbg_event(0xFF, "WAKEUP", remote_wakeup);
 	/*
@@ -3551,7 +3585,7 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 	enum dwc3_link_state next = evtinfo & DWC3_LINK_STATE_MASK;
 
 	dbg_event(0xFF, "SUSPEND INT", 0);
-	dev_dbg(dwc->dev, "%s Entry to %d\n", __func__, next);
+	dev_info(dwc->dev, "%s Entry to %d\n", __func__, next);
 
 	if (dwc->link_state != next && next == DWC3_LINK_STATE_U3) {
 		/*
@@ -3568,7 +3602,12 @@ static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
 			return;
 		}
 
-		dwc3_suspend_gadget(dwc);
+		if (gDongleType == DT) {
+			dev_info(dwc->dev, "DT unplug usb");
+			dwc3_notify_event(dwc, DWC3_CONTROLLER_ERROR_EVENT, 0);
+			return;
+		} else
+			dwc3_suspend_gadget(dwc);
 
 		dev_dbg(dwc->dev, "Notify OTG from %s\n", __func__);
 		dwc->b_suspend = true;

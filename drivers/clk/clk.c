@@ -2687,7 +2687,16 @@ EXPORT_SYMBOL_GPL(clk_set_flags);
 
 static struct dentry *rootdir;
 static int inited = 0;
-static u32 debug_suspend;
+
+/*[PM] Enable clock_debug_print_enabled_clocks() during suspend for clock count debug.*/
+/*[PM] ./sys/kernel/debug/clk/debug_suspend */
+static u32 debug_suspend=1;
+
+static bool bIsCXO_clk = false;	/*for cxo_clk_src exists*/
+static bool b_clk_dump = false;	/*for manual debug mode*//*[PM] ./sys/module/clk/parameters/force_clk_dump*/
+
+
+
 static DEFINE_MUTEX(clk_debug_lock);
 static HLIST_HEAD(clk_debug_list);
 
@@ -3027,6 +3036,12 @@ static void clock_debug_print_enabled_debug_suspend(struct seq_file *s)
 		clock_debug_output(s, 0, "No clocks enabled.\n");
 }
 
+/*[PM] Add ASUS debug node to refine much logs for clock_debug_print_enabled_clocks()*/
+/*[PM] ./sys/module/clk/parameters/force_clk_dump*/
+module_param_named(
+	force_clk_dump, b_clk_dump, bool, S_IRUSR | S_IWUSR
+);
+
 static int clock_debug_print_clock(struct clk_core *c, struct seq_file *s)
 {
 	char *start = "";
@@ -3036,27 +3051,34 @@ static int clock_debug_print_clock(struct clk_core *c, struct seq_file *s)
 		return 0;
 
 	clk = c->hw->clk;
-
-	clock_debug_output(s, 0, "\t");
+/*[PM] Only dump CLK info during CLK abnormal +++*/
+	if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
+		clock_debug_output(s, 0, "\t");
+	}
 
 	do {
-		if (clk->core->vdd_class)
-			clock_debug_output(s, 1, "%s%s:%u:%u [%ld, %d]", start,
-					clk->core->name,
-					clk->core->prepare_count,
-					clk->core->enable_count,
-					clk->core->rate,
-				clk_find_vdd_level(clk->core, clk->core->rate));
-		else
-			clock_debug_output(s, 1, "%s%s:%u:%u [%ld]", start,
-					clk->core->name,
-					clk->core->prepare_count,
-					clk->core->enable_count,
-					clk->core->rate);
-		start = " -> ";
+		if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
+			if (clk->core->vdd_class)
+				clock_debug_output(s, 1, "%s%s:%u:%u [%ld, %d]", start,
+						clk->core->name,
+						clk->core->prepare_count,
+						clk->core->enable_count,
+						clk->core->rate,
+					clk_find_vdd_level(clk->core, clk->core->rate));
+			else
+				clock_debug_output(s, 1, "%s%s:%u:%u [%ld]", start,
+						clk->core->name,
+						clk->core->prepare_count,
+						clk->core->enable_count,
+						clk->core->rate);
+			start = " -> ";
+		}
 	} while ((clk = clk_get_parent(clk)));
 
-	clock_debug_output(s, 1, "\n");
+	if ((bIsCXO_clk == true) || (b_clk_dump == true)) {
+		clock_debug_output(s, 1, "\n");
+	}
+/*[PM] Only dump CLK info during CLK abnormal ---*/
 
 	return 1;
 }
@@ -3077,12 +3099,24 @@ static void clock_debug_print_enabled_clocks(struct seq_file *s)
 	hlist_for_each_entry(core, &clk_debug_list, debug_node)
 		cnt += clock_debug_print_clock(core, s);
 
+/*[PM] Only dump CLK info during CLK abnormal +++*/
+	if (!b_clk_dump) {//only dump 1 times when forceCLK = Y
+		if (cnt > 26) {
+			bIsCXO_clk = true;
+			hlist_for_each_entry(core, &clk_debug_list, debug_node)
+				clock_debug_print_clock(core, s);
+		}
+	}
+
+/*[PM] Only dump CLK info during CLK abnormal ---*/
 	mutex_unlock(&clk_debug_lock);
 
 	if (cnt)
 		clock_debug_output(s, 0, "Enabled clock count: %d\n", cnt);
 	else
 		clock_debug_output(s, 0, "No clocks enabled.\n");
+
+	bIsCXO_clk = false; /*[PM] Reset this flag after clock_debug_print_enabled_clocks()*/
 }
 
 static int enabled_clocks_show(struct seq_file *s, void *unused)

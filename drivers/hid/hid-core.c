@@ -2396,6 +2396,9 @@ static const struct hid_device_id hid_have_special_driver[] = {
 #if IS_ENABLED(CONFIG_HID_ZYDACRON)
 	{ HID_USB_DEVICE(USB_VENDOR_ID_ZYDACRON, USB_DEVICE_ID_ZYDACRON_REMOTE_CONTROL) },
 #endif
+	{HID_USB_DEVICE(USB_VENDOR_ID_ASUS_GAMEPAD,USB_DEVICE_ID_ASUS_GAMEPAD)},
+    {HID_USB_DEVICE(USB_VENDOR_ID_ASUS_GAMEPAD_OLD,USB_DEVICE_ID_ASUS_GAMEPAD_OLD)},
+	{HID_USB_DEVICE(USB_VENDOR_ID_ENE,USB_DEVICE_ID_ENE_6K7750_MAIN)},
 	{ }
 };
 
@@ -2511,6 +2514,7 @@ static int hid_device_probe(struct device *dev)
 		}
 
 		hdev->driver = hdrv;
+		pr_info("[USB] hid_device_probe, driver name=%s\n",hdev->driver->name);
 		if (hdrv->probe) {
 			ret = hdrv->probe(hdev, id);
 		} else { /* default probe */
@@ -2850,6 +2854,10 @@ static const struct hid_device_id hid_mouse_ignore_list[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRING9_JIS) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_FOUNTAIN_TP_ONLY) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_GEYSER1_TP_ONLY) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ENE, USB_DEVICE_ID_ENE_6K7750_MAIN) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ENE, USB_DEVICE_ID_ENE_6K7750_LOADER) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUS_GAMEPAD, USB_DEVICE_ID_ASUS_GAMEPAD) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUS_GAMEPAD_OLD, USB_DEVICE_ID_ASUS_GAMEPAD_OLD) },
 	{ }
 };
 

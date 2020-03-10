@@ -35,6 +35,15 @@
 #include "drm_crtc_helper_internal.h"
 #include "drm_crtc_internal.h"
 
+/* ASUS BSP Display +++ */
+struct drm_display_mode *gDispMode;
+bool gFirstBoot = true;
+bool changeFps = false;
+int lastFps = 120;
+EXPORT_SYMBOL(lastFps);
+extern bool g_enter_AOD;
+/* ASUS BSP Display --- */
+
 /**
  * DOC: overview
  *
@@ -575,12 +584,49 @@ drm_atomic_helper_check_modeset(struct drm_device *dev,
 			!!new_crtc_state->connector_mask;
 
 		WARN_ON(!drm_modeset_is_locked(&crtc->mutex));
+		/* ASUS BSP Display +++ */
+		if (!strcmp(crtc->name, "crtc-0")) {
+			if (gFirstBoot) {
+				if (!gDispMode) {
+					gDispMode = kzalloc(sizeof(struct drm_display_mode), GFP_KERNEL);
+				}
+				memcpy(gDispMode, &crtc->state->mode, sizeof(struct drm_display_mode));
+				gFirstBoot = false;
+				pr_err("[Display] primary fps (%d)\n", gDispMode->vrefresh);
+			}
+			
+			/* run time */
+			if ((old_crtc_state->enable == new_crtc_state->enable) &&
+				(old_crtc_state->active == new_crtc_state->active)) {
+				if (lastFps != new_crtc_state->mode.vrefresh) {
+					pr_err("[Display] new fps(%d), lastFps(%d)\n", new_crtc_state->mode.vrefresh, lastFps);
+					lastFps = new_crtc_state->mode.vrefresh;
+					changeFps = true;
+				}
+			} 
+		}		
+		/* ASUS BSP Display --- */
 
 		if (!drm_mode_equal(&old_crtc_state->mode, &new_crtc_state->mode)) {
 			DRM_DEBUG_ATOMIC("[CRTC:%d:%s] mode changed\n",
 					 crtc->base.id, crtc->name);
-			new_crtc_state->mode_changed = true;
+			/* ASUS BSP Display, disable dfps +++ */				
+			new_crtc_state->mode_changed = false;
 		}
+
+		/* ASUS BSP Display, prevent sde crash +++ */		
+		if (!strcmp(crtc->name, "crtc-0") && new_crtc_state->active == 0) {
+			memcpy(&new_crtc_state->mode, gDispMode, sizeof(struct drm_display_mode));
+			memcpy(&old_crtc_state->mode, gDispMode, sizeof(struct drm_display_mode));
+		}
+
+		if (!strcmp(crtc->name, "crtc-0") && changeFps && g_enter_AOD) {
+			pr_err("[Display] skip dfps in doze.\n");
+			memcpy(&new_crtc_state->mode, gDispMode, sizeof(struct drm_display_mode));
+			lastFps = new_crtc_state->mode.vrefresh;
+			changeFps = false;
+		}
+		/* ASUS BSP Display, prevent sde crash --- */
 
 		if (old_crtc_state->enable != new_crtc_state->enable) {
 			DRM_DEBUG_ATOMIC("[CRTC:%d:%s] enable changed\n",

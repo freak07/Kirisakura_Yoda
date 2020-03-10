@@ -572,20 +572,23 @@ int cam_res_mgr_gpio_set_value(unsigned int gpio, int value)
 	 * gpio_res_list, otherwise, need add ref count support
 	 **/
 	if (!found) {
+				CAM_ERR(CAM_RES,
+					"Shared GPIO(%d) : value=%d", gpio,value);
+		
 		gpio_set_value_cansleep(gpio, value);
 	} else {
 		if (value) {
 			gpio_res->power_on_count++;
 			if (gpio_res->power_on_count < 2) {
 				gpio_set_value_cansleep(gpio, value);
-				CAM_DBG(CAM_RES,
+				CAM_ERR(CAM_RES,
 					"Shared GPIO(%d) : HIGH", gpio);
 			}
 		} else {
 			gpio_res->power_on_count--;
 			if (gpio_res->power_on_count < 1) {
 				gpio_set_value_cansleep(gpio, value);
-				CAM_DBG(CAM_RES,
+				CAM_ERR(CAM_RES,
 					"Shared GPIO(%d) : LOW", gpio);
 			}
 		}
@@ -656,6 +659,10 @@ static int cam_res_mgr_parse_dt(struct device *dev)
 			"Failed to get the active state pinctrl handle");
 		return -EINVAL;
 	}
+//+++ ASUS_BSP Jason add gpio 166 vcm_en 	pinctrl_select_state
+       rc =pinctrl_select_state(dt->pinctrl_info.pinctrl,dt->pinctrl_info.gpio_state_active);
+		CAM_ERR(CAM_RES,"gpio 166 vcm_en 	pinctrl_select_state rc =%d",rc);
+//--- ASUS_BSP Jason add gpio 166 vcm_en 	pinctrl_select_state
 
 	dt->pinctrl_info.gpio_state_suspend =
 		pinctrl_lookup_state(dt->pinctrl_info.pinctrl,

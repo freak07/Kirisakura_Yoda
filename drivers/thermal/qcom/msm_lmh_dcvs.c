@@ -296,17 +296,20 @@ static int lmh_set_trips(void *data, int low, int high)
 {
 	struct limits_dcvs_hw *hw = (struct limits_dcvs_hw *)data;
 	int ret = 0;
-
+    if(high == 100000)
+        low = 85000;
+        
+    printk("lmh_set_trips1 high=%d, low=%d", high, low );
 	if (high >= LIMITS_TEMP_HIGH_THRESH_MAX || low < 0) {
 		pr_err("Value out of range low:%d high:%d\n",
 				low, high);
 		return -EINVAL;
 	}
-
+printk("lmh_set_trips2 high=%d, low=%d", high, low );
 	/* Sanity check limits before writing to the hardware */
 	if (low >= high)
 		return -EINVAL;
-
+printk("lmh_set_trips3 high=%d, low=%d", high, low);
 	hw->temp_limits[LIMITS_TRIP_HI] = (uint32_t)high;
 	hw->temp_limits[LIMITS_TRIP_ARM] = (uint32_t)low;
 
@@ -344,7 +347,7 @@ static struct limits_dcvs_hw *get_dcvsh_hw_from_cpu(int cpu)
 
 	return NULL;
 }
-
+u32 therm_cpu7_max_limit = 2956800;
 static int lmh_set_max_limit(int cpu, u32 freq)
 {
 	struct limits_dcvs_hw *hw = get_dcvsh_hw_from_cpu(cpu);
@@ -356,7 +359,7 @@ static int lmh_set_max_limit(int cpu, u32 freq)
 
 	mutex_lock(&hw->access_lock);
 	for_each_cpu(cpu_idx, &hw->core_map) {
-		if (cpu_idx == cpu)
+	  if (cpu_idx == cpu){
 		/*
 		 * If there is no limits restriction for CPU scaling max
 		 * frequency, vote for a very high value. This will allow
@@ -364,6 +367,11 @@ static int lmh_set_max_limit(int cpu, u32 freq)
 		 */
 			hw->cdev_data[idx].max_freq =
 				(freq == hw->max_freq[idx]) ? U32_MAX : freq;
+			if(cpu==7){
+			  therm_cpu7_max_limit = freq;
+			  pr_info("cpu=%d, therm_cpu7_max_limit=%u", cpu, therm_cpu7_max_limit);
+			}
+	  }
 		if (max_freq > hw->cdev_data[idx].max_freq)
 			max_freq = hw->cdev_data[idx].max_freq;
 		idx++;

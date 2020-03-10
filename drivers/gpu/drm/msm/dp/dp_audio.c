@@ -535,7 +535,10 @@ static int dp_audio_ack_done(struct platform_device *pdev, u32 ack)
 
 	if (!audio->engine_on) {
 		atomic_set(&audio->acked, 1);
-		complete_all(&audio->hpd_comp);
+        if (&audio->hpd_comp != NULL) {
+            complete_all(&audio->hpd_comp);
+        } else
+            pr_err("[Display] hpd comp is NULL.\n");
 	}
 end:
 	return rc;
@@ -672,11 +675,14 @@ static int dp_audio_notify(struct dp_audio_private *audio, u32 state)
 	if (atomic_read(&audio->acked))
 		goto end;
 
-	rc = wait_for_completion_timeout(&audio->hpd_comp, HZ * 4);
-	if (!rc) {
-		pr_err("timeout. state=%d err=%d\n", state, rc);
-		rc = -ETIMEDOUT;
-		goto end;
+    //Do not wait for audio ack when connect
+    if (state != 1) {
+        rc = wait_for_completion_timeout(&audio->hpd_comp, HZ * 4);
+        if (!rc) {
+            pr_err("timeout. state=%d err=%d\n", state, rc);
+            rc = -ETIMEDOUT;
+            goto end;
+        }
 	}
 
 	pr_debug("success\n");

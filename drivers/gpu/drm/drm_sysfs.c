@@ -52,6 +52,71 @@ static char *drm_devnode(struct device *dev, umode_t *mode)
 
 static CLASS_ATTR_STRING(version, S_IRUGO, "drm 1.1.0 20060810");
 
+/* ASUS BSP Display, add for Hdr mode +++ */
+static int g_hdr = 0;
+static ssize_t hdr_mode_show(struct class *class,
+					struct class_attribute *attr,
+					char *buf)
+{
+	return sprintf(buf, "%d\n", g_hdr);
+}
+
+static ssize_t hdr_mode_store(struct class *class,
+					struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+	if (!count)
+		return -EINVAL;
+
+	sscanf(buf, "%d", &g_hdr);
+
+	return count;
+}
+static CLASS_ATTR_RW(hdr_mode);
+/* ASUS BSP Display, add for Hdr mode --- */
+
+// ASUS_BSP SZ +++ Lydia_Wu
+extern void asus_dp_change_state(bool mode, int type);
+static ssize_t dp_connect_store(struct class *class,
+					struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+    u32 connected = 0;
+
+	if (!count)
+		return -EINVAL;
+
+	sscanf(buf, "%d", &connected);
+
+    asus_dp_change_state(connected, 3);
+
+	pr_err("Debug connected: %d\n", connected);
+
+	return count;
+}
+static CLASS_ATTR_WO(dp_connect);
+
+extern void set_station_sleep(bool sleep);
+static ssize_t station_sleep_store(struct class *class,
+					struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+    u32 sleep = 0;
+
+	if (!count)
+		return -EINVAL;
+
+	sscanf(buf, "%d", &sleep);
+
+    set_station_sleep(sleep);
+
+	pr_err("Debug station_sleep: %d\n", sleep);
+
+	return count;
+}
+static CLASS_ATTR_WO(station_sleep);
+// ASUS_BSP SZ --- Lydia_Wu
+
 /**
  * drm_sysfs_init - initialize sysfs helpers
  *
@@ -76,6 +141,33 @@ int drm_sysfs_init(void)
 		drm_class = NULL;
 		return err;
 	}
+	/* ASUS BSP Display, add for Hdr mode +++ */
+	err = class_create_file(drm_class, &class_attr_hdr_mode);
+	if (err) {
+		pr_err("[Display] Fail to create hdr_mode file node\n");
+		class_destroy(drm_class);
+		drm_class = NULL;
+		return err;
+	}
+	/* ASUS BSP Display, add for Hdr mode --- */
+
+    // ASUS_BSP SZ +++ Lydia_Wu
+    err = class_create_file(drm_class, &class_attr_dp_connect);
+    if (err) {
+        pr_err("[Display] Fail to create dp_connect file node\n");
+        class_destroy(drm_class);
+        drm_class = NULL;
+        return err;
+    }
+
+    err = class_create_file(drm_class, &class_attr_station_sleep);
+    if (err) {
+        pr_err("[Display] Fail to create station sleep file node\n");
+        class_destroy(drm_class);
+        drm_class = NULL;
+        return err;
+    }
+    // ASUS_BSP SZ --- Lydia_Wu
 
 	drm_class->devnode = drm_devnode;
 	return 0;
@@ -91,6 +183,10 @@ void drm_sysfs_destroy(void)
 	if (IS_ERR_OR_NULL(drm_class))
 		return;
 	class_remove_file(drm_class, &class_attr_version.attr);
+	/* ASUS BSP Display, add for hdr mode +++ */
+	class_remove_file(drm_class, &class_attr_hdr_mode);
+	class_remove_file(drm_class, &class_attr_dp_connect);
+	class_remove_file(drm_class, &class_attr_station_sleep);
 	class_destroy(drm_class);
 	drm_class = NULL;
 }

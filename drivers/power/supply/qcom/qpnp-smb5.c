@@ -30,6 +30,28 @@
 #include "smb5-lib.h"
 #include "schgm-flash.h"
 
+//ASUS BSP add include files +++
+#include <linux/proc_fs.h>
+#include <linux/of_gpio.h>
+#include <linux/reboot.h>
+#include <dt-bindings/iio/qcom,spmi-vadc.h>
+#include <linux/unistd.h>
+#include <linux/fcntl.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
+#include "fg-core.h"
+//#include <linux/wakelock.h>
+#include <linux/msm_drm_notify.h> //Add to get drm notifier
+//ASUS BSP add include files ---
+
+//ASUS BSP : Add debug log +++
+#define CHARGER_TAG "[BAT][CHG]"
+#define ERROR_TAG "[ERR]"
+#define CHG_DBG(...)  printk(KERN_INFO CHARGER_TAG __VA_ARGS__)
+#define CHG_DBG_E(...)  printk(KERN_ERR CHARGER_TAG ERROR_TAG __VA_ARGS__)
+//ex:CHG_DBG("%s: %d\n", __func__, l_result);
+//ASUS BSP : Add debug log ---
+
 static struct smb_params smb5_pmi632_params = {
 	.fcc			= {
 		.name   = "fast charge current",
@@ -232,6 +254,107 @@ struct smb5 {
 	struct dentry		*dfs_root;
 	struct smb_dt_props	dt;
 };
+
+//ASUS BSP add struct functions +++
+struct smb_charger *smbchg_dev;
+struct gpio_control *global_gpio;	//global gpio_control
+struct timespec last_jeita_time;
+//ASUS BSP add struct functions ---
+
+//ASUS BSP : Add ASUS variables +++
+bool boot_completed_flag = 0;
+bool fake_er_stage_flag = 0;
+int charger_limit_value = 70;
+int charger_limit_enable_flag = 0;
+volatile bool asus_suspend_cmd_flag = 0;
+bool no_input_suspend_flag = 0;
+volatile bool is_asp1690e_off = 0;
+bool usb_alert_flag = 0;
+bool usb_alert_keep_suspend_flag = 0;
+bool usb_alert_flag_ACCY = 0;
+bool usb_alert_keep_suspend_flag_ACCY = 0;
+volatile bool cos_alert_once_flag = 0;
+int g_temp_state = 0;
+int g_temp_side_state = 0;
+int g_temp_btm_state = 0;
+int g_temp_station_state = 0;
+int g_temp_INBOX_DT_state = 0;
+volatile bool ultra_bat_life_flag = 0;
+volatile int g_ultra_cos_spec_time = 2880;
+bool smartchg_stop_flag = 0;
+bool demo_app_property_flag = 0;
+bool cn_demo_app_flag = 0;
+int demo_recharge_delta = 2;
+int g_force_usb_mux = 0;//Force to set the usb_mux, skip all asus_mux_setting_1_work function
+int g_dt_batt_profile_fcc_ua;
+volatile bool rerun_thermal_alert_flag = 0;
+bool force_station_ultra_flag = 0;
+volatile bool station_cap_zero_flag = 0;
+bool game_type_flag = 0;
+//ASUS BSP : Add ASUS variables ---
+
+//ASUS BSP : Add extern variables +++
+extern struct fg_dev *g_fgDev;
+extern bool g_Charger_mode;
+extern int g_ftm_mode;
+extern int g_ST_SDP_mode;//Add for STATION uses ADB tool
+extern bool asus_flow_done_flag;
+extern volatile bool asus_adapter_detecting_flag;
+extern int asus_CHG_TYPE;
+extern struct fg_dev * g_fgDev;
+extern bool is_hall_sensor_detect; //Lijen implement power bank and balance mode
+extern volatile bool dual_port_once_flag;
+extern volatile enum bat_stage last_charger_statge;
+extern volatile enum bat_charger_state last_charger_state;
+extern volatile bool station_cable_flag;
+extern volatile bool is_Station_PB;
+//ASUS BSP : Add extern variables ---
+
+// [+++] ASUS add for ROG ACCY
+volatile enum POGO_ID ASUS_POGO_ID = NO_INSERT;
+struct notifier_block pogo_detect_nb; //Add for usb_mux update when there is ACCY inserted
+struct timespec g_last_accy_therm_int;
+struct notifier_block smb5_drm_nb; //Add for station update when screen on
+// [---] ASUS add for ROG ACCY
+
+//ASUS BSP : Add for external functions +++
+extern int ec_hid_event_register(struct notifier_block *nb);
+extern int ec_hid_event_unregister(struct notifier_block *nb);
+extern void smblib_asus_monitor_start(struct smb_charger *chg, int time);
+extern bool asus_get_prop_usb_present(struct smb_charger *chg);
+extern void pmic_set_pca9468_charging(bool enable);
+extern void smblib_asus_monitor_start(struct smb_charger *chg, int time);
+extern bool asus_get_prop_usb_present(struct smb_charger *chg);
+extern int asus_get_prop_batt_capacity(struct smb_charger *chg);
+extern int asus_get_prop_batt_volt(struct smb_charger *chg);
+extern bool rt_chg_check_asus_vid(void);
+extern bool PE_check_asus_vid(void);
+extern int ec_i2c_check_interrupt(char *type, char *event);
+extern int hid_to_get_battery_cap(int *cap);
+extern void fg_station_attach_notifier(bool attached);
+extern int asus_get_batt_status(void);
+extern void write_CHGLimit_value(int input);
+extern int asus_get_bottom_ufp_mode(void);
+extern int asus_extcon_set_state_sync(struct extcon_dev *edev, int cable_state);
+//ASUS BSP : Add for external functions ---
+
+//ASUS BSP : Add for previous announcement +++
+void set_qc_stat(union power_supply_propval *val);
+//ASUS BSP : Add for previous announcement ---
+
+//[+++]Add the interface for charging debug apk
+extern int asus_get_prop_adapter_id(void);
+extern int asus_get_prop_is_legacy_cable(void);
+extern int asus_get_prop_total_fcc(void);
+extern int asus_get_apsd_result_by_bit(void);
+//[---]Add the interface for charging debug apk
+
+// ASP1690E +++
+extern bool asp1690e_ready;
+extern int asp1690e_mask_write_reg(uint8_t cmd_reg, uint8_t mask, uint8_t write_val);
+extern int asp1690e_write_reg(uint8_t cmd_reg, uint8_t write_val);
+extern int asp1690e_read_reg(uint8_t cmd_reg, uint8_t *store_read_val);
+// ASP1690E +++
 
 static int __debug_mask;
 module_param_named(
@@ -436,6 +559,7 @@ static int smb5_parse_dt(struct smb5 *chip)
 			"qcom,fcc-max-ua", &chip->dt.batt_profile_fcc_ua);
 	if (rc < 0)
 		chip->dt.batt_profile_fcc_ua = -EINVAL;
+	g_dt_batt_profile_fcc_ua = chip->dt.batt_profile_fcc_ua;	//ASUS BSP +++
 
 	rc = of_property_read_u32(node,
 				"qcom,fv-max-uv", &chip->dt.batt_profile_fv_uv);
@@ -460,6 +584,7 @@ static int smb5_parse_dt(struct smb5 *chip)
 
 	rc = of_property_read_u32(node, "qcom,chg-term-current-ma",
 			&chip->dt.term_current_thresh_hi_ma);
+	printk(KERN_ERR "term_current_thresh_hi_ma : %d\n", chip->dt.term_current_thresh_hi_ma);
 
 	if (chip->dt.term_current_src == ITERM_SRC_ADC)
 		rc = of_property_read_u32(node, "qcom,chg-term-base-current-ma",
@@ -690,6 +815,19 @@ static enum power_supply_property smb5_usb_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_VPH,
 	POWER_SUPPLY_PROP_THERM_ICL_LIMIT,
 	POWER_SUPPLY_PROP_SKIN_HEALTH,
+	//[+++]Add the interface for charging debug apk
+	POWER_SUPPLY_PROP_ASUS_APSD_RESULT,
+	POWER_SUPPLY_PROP_ASUS_ADAPTER_ID,
+	POWER_SUPPLY_PROP_ASUS_IS_LEGACY_CABLE,
+	POWER_SUPPLY_PROP_ASUS_ICL_SETTING,
+	POWER_SUPPLY_PROP_ASUS_TOTAL_FCC,
+	//[---]Add the interface for charging debug apk
+#ifdef CONFIG_USBPD_PHY_QCOM
+	POWER_SUPPLY_PROP_CHARGING_ENABLED,
+#endif
+/* ASUS Add POWER SUPPLY PROPERTY +++ */
+	POWER_SUPPLY_PROP_PD2_ACTIVE,
+/* ASUS Add POWER SUPPLY PROPERTY --- */
 };
 
 static int smb5_usb_get_prop(struct power_supply *psy,
@@ -700,6 +838,7 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 	struct smb_charger *chg = &chip->chg;
 	union power_supply_propval pval;
 	int rc = 0;
+	u8 stat; //Add the interface for charging debug apk
 	val->intval = 0;
 
 	switch (psp) {
@@ -715,11 +854,30 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 		   (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB))
 			&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB))
 			val->intval = 0;
+//Add for BTM online state +++
+		else if ((!gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK))
+			&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB))
+			val->intval = 0;
+//Add for BTM online state ---
 		else
 			val->intval = 1;
 
 		if (chg->real_charger_type == POWER_SUPPLY_TYPE_UNKNOWN)
 			val->intval = 0;
+		//[+++]WA for 45W adapter WA, which will create a side-effecit too late to show charging icon
+		//QCT will set online as 0 if BC 1.2 is UNKNOWN
+		if (chg->pd2_active && !gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK)
+			&& chg->real_charger_type == POWER_SUPPLY_TYPE_UNKNOWN) {
+			CHG_DBG("For BTM USB, reset online = 1 for unknown case\n");
+			val->intval = 1;
+		}
+		//[---]WA for 45W adapter WA, which will create a side-effecit too late to show charging icon
+		//[+++]WA for PD hard reset of BTM cause vbus_risng = 0 in COS mode
+		if (g_Charger_mode && !gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK)) {
+			CHG_DBG("For BTM USB, reset online = 1 for btm_ovp = 0 in charging mode\n");
+			val->intval = 1;
+		}
+		//[---]WA for PD hard reset of BTM cause vbus_risng = 0 in COS mode
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
 		rc = smblib_get_prop_usb_voltage_max_design(chg, val);
@@ -867,6 +1025,38 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_SKIN_HEALTH:
 		val->intval = smblib_get_skin_temp_status(chg);
 		break;
+   	//[+++]Add the interface for charging debug apk
+	case POWER_SUPPLY_PROP_ASUS_APSD_RESULT:
+		val->intval = asus_get_apsd_result_by_bit();
+		break;
+	case POWER_SUPPLY_PROP_ASUS_ADAPTER_ID:
+		val->intval = asus_get_prop_adapter_id();
+		break;
+	case POWER_SUPPLY_PROP_ASUS_IS_LEGACY_CABLE:
+		val->intval = asus_get_prop_is_legacy_cable();
+		break;
+	case POWER_SUPPLY_PROP_ASUS_ICL_SETTING:
+		rc = smblib_read(chg, USBIN_CURRENT_LIMIT_CFG_REG, &stat);
+		if (rc < 0) {
+			pr_err("Couldn't read USBIN_CURRENT_LIMIT_CFG_REG rc=%d\n", rc);
+			return rc;
+		}
+		val->intval = stat*50;//every stage is 50mA
+		break;
+	case POWER_SUPPLY_PROP_ASUS_TOTAL_FCC:
+		val->intval = asus_get_prop_total_fcc();
+		break;
+	//[---]Add the interface for charging debug apk
+#ifdef CONFIG_USBPD_PHY_QCOM
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		rc = smblib_get_prop_charging_enabled(chg, val);
+		break;
+#endif
+/* ASUS Add POWER SUPPLY PROPERTY +++ */
+	case POWER_SUPPLY_PROP_PD2_ACTIVE:
+		val->intval = chg->pd2_active;
+		break;
+/* ASUS Add POWER SUPPLY PROPERTY --- */
 	default:
 		pr_err("get prop %d is not supported in usb\n", psp);
 		rc = -EINVAL;
@@ -956,6 +1146,20 @@ static int smb5_usb_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ADAPTER_CC_MODE:
 		chg->adapter_cc_mode = val->intval;
 		break;
+#ifdef CONFIG_USBPD_PHY_QCOM
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		CHG_DBG("%s: set_property POWER_SUPPLY_PROP_CURRENT_MAX\n", __func__);
+		rc = smblib_set_prop_usb_current_max(chg, val);
+		break;
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		rc = smblib_set_prop_charging_enabled(chg, val);
+		break;
+#endif
+/* ASUS Add POWER SUPPLY PROPERTY +++ */
+	case POWER_SUPPLY_PROP_PD2_ACTIVE:
+		rc = smblib_set_prop_pd2_active(chg, val);
+		break;
+/* ASUS Add POWER SUPPLY PROPERTY --- */
 	default:
 		pr_err("set prop %d is not supported\n", psp);
 		rc = -EINVAL;
@@ -991,6 +1195,54 @@ static const struct power_supply_desc usb_psy_desc = {
 	.set_property = smb5_usb_set_prop,
 	.property_is_writeable = smb5_usb_prop_is_writeable,
 };
+
+int rt_charger_set_usb_property_notifier(enum power_supply_property psp, int value)
+{
+	union power_supply_propval val = {0};
+	bool pogo_ovp_stats = gpio_get_value_cansleep(global_gpio->POGO_OVP_ACOK);
+	int rc = 0;
+	int rt_ufp = asus_get_bottom_ufp_mode();
+
+	if (!pogo_ovp_stats && rt_ufp != 0) {
+		CHG_DBG_E("%s: Set dual_port_once_flag = 1\n", __func__);
+		dual_port_once_flag = 1;
+	}
+
+	if (!pogo_ovp_stats && (psp == POWER_SUPPLY_PROP_PD_CURRENT_MAX || psp == POWER_SUPPLY_PROP_PD_VOLTAGE_MAX)) {
+		CHG_DBG_E("%s: POGO_OVP exist, do not set current/voltage property from BTM\n", __func__);
+		return 0;
+	}
+
+	mutex_lock(&smbchg_dev->smb_lock);
+
+	if (psp == POWER_SUPPLY_PROP_PD_CURRENT_MAX) {
+		if (rt_chg_check_asus_vid()) {
+			CHG_DBG_E("%s: BTM PCA working, do not set PD_CURRENT_MAX property from BTM\n", __func__);
+			mutex_unlock(&smbchg_dev->smb_lock);
+			return 0;
+		}
+	}
+
+	val.intval = value;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_PD2_ACTIVE:	//183
+		rc = smblib_set_prop_pd2_active(smbchg_dev, &val);
+		break;
+	case POWER_SUPPLY_PROP_PD_CURRENT_MAX:	//123
+		rc = smblib_set_prop_pd_current_max(smbchg_dev, &val);
+		break;
+	case POWER_SUPPLY_PROP_PD_VOLTAGE_MAX:	//142
+		rc = smblib_set_prop_pd_voltage_max(smbchg_dev, &val);
+		break;
+	default:
+		break;
+	}
+	CHG_DBG("%s: Rt-charger set property %d, set value = %d, rc = %d", __func__, psp, value, rc);
+
+	mutex_unlock(&smbchg_dev->smb_lock);
+	return rc;
+}
 
 static int smb5_init_usb_psy(struct smb5 *chip)
 {
@@ -1041,6 +1293,11 @@ static int smb5_usb_port_get_prop(struct power_supply *psy,
 		   (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB))
 			&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB))
 			val->intval = 1;
+//Add for BTM online state +++
+		else if ((!gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK))
+			&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB))
+			val->intval = 1;
+//Add for BTM online state ---
 		else
 			val->intval = 0;
 		break;
@@ -1129,6 +1386,9 @@ static enum power_supply_property smb5_usb_main_props[] = {
 	POWER_SUPPLY_PROP_FORCE_MAIN_ICL,
 	POWER_SUPPLY_PROP_COMP_CLAMP_LEVEL,
 	POWER_SUPPLY_PROP_HEALTH,
+#ifdef CONFIG_USBPD_PHY_QCOM
+	POWER_SUPPLY_PROP_CHARGING_ENABLED,
+#endif
 };
 
 static int smb5_usb_main_get_prop(struct power_supply *psy,
@@ -1192,6 +1452,11 @@ static int smb5_usb_main_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = smblib_get_prop_smb_health(chg);
 		break;
+#ifdef CONFIG_USBPD_PHY_QCOM
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		rc = smblib_get_prop_charging_enabled(chg, val);
+		break;
+#endif
 	default:
 		pr_debug("get prop %d is not supported in usb-main\n", psp);
 		rc = -EINVAL;
@@ -1216,12 +1481,15 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		CHG_DBG("%s: set voltage_max: %d\n", __func__, val->intval);
 		rc = smblib_set_charge_param(chg, &chg->param.fv, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
+		CHG_DBG("%s: set constant charge_current: %d\n", __func__, val->intval);
 		rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		CHG_DBG("%s: set current_max: %d\n", __func__, val->intval);
 		rc = smblib_set_icl_current(chg, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_FLASH_ACTIVE:
@@ -1244,7 +1512,7 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 			} else {
 				/* USB absent & flash not-active - vote 100mA */
 				vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER,
-							true, SDP_100_MA);
+							true, SDP_CURRENT_UA);	// ASUS BSP 100->500 +++
 			}
 
 			pr_debug("flash active VBUS 5V restriction %s\n",
@@ -1273,6 +1541,11 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_COMP_CLAMP_LEVEL:
 		rc = smb5_set_prop_comp_clamp_level(chg, val);
 		break;
+#ifdef CONFIG_USBPD_PHY_QCOM
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		rc = smblib_set_prop_charging_enabled(chg, val);
+		break;
+#endif
 	default:
 		pr_err("set prop %d is not supported\n", psp);
 		rc = -EINVAL;
@@ -1515,6 +1788,10 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		rc = smblib_get_prop_batt_status(chg, val);
+		//ASUS BSP : Show "+" on charging icon +++
+		if (boot_completed_flag)
+			set_qc_stat(val);
+		//ASUS BSP : Show "+" on charging icon ---
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		rc = smblib_get_prop_batt_health(chg, val);
@@ -2500,8 +2777,11 @@ static int smb5_init_hw(struct smb5 *chip)
 	 * knob to turn it on if required. Additionally, if specified in DT,
 	 * disable HVDCP and HVDCP authentication algorithm.
 	 */
-	val = (chg->hvdcp_disable) ? 0 :
-		(HVDCP_AUTH_ALG_EN_CFG_BIT | HVDCP_EN_BIT);
+//ASUS BSP charger : Default hw_init disable hvdcp +++
+	val = 0;
+	//val = (chg->hvdcp_disable) ? 0 :
+	//	(HVDCP_AUTH_ALG_EN_CFG_BIT | HVDCP_EN_BIT);
+//ASUS BSP charger : Default hw_init disable hvdcp ---
 	if (chip->dt.hvdcp_autonomous)
 		val |= HVDCP_AUTONOMOUS_MODE_EN_CFG_BIT;
 
@@ -2597,6 +2877,10 @@ static int smb5_init_hw(struct smb5 *chip)
 	vote(chg->fv_votable,
 		BATT_PROFILE_VOTER, chg->batt_profile_fv_uv > 0,
 		chg->batt_profile_fv_uv);
+#ifdef CONFIG_USBPD_PHY_QCOM
+		/* enable switching charger */
+		vote(chg->chg_disable_votable, DIRECT_CHARGE_VOTER, false, 0);
+#endif
 
 	/* Some h/w limit maximum supported ICL */
 	vote(chg->usb_icl_votable, HW_LIMIT_VOTER,
@@ -2627,7 +2911,7 @@ static int smb5_init_hw(struct smb5 *chip)
 	}
 
 	rc = smblib_write(chg, AICL_RERUN_TIME_CFG_REG,
-				AICL_RERUN_TIME_12S_VAL);
+				AICL_RERUN_TIME_3S_VAL);		// ASUS BSP : set from 12s to 3s +++
 	if (rc < 0) {
 		dev_err(chg->dev,
 			"Couldn't configure AICL rerun interval rc=%d\n", rc);
@@ -3417,15 +3701,1507 @@ static int smb5_show_charger_status(struct smb5 *chip)
 	return rc;
 }
 
+//ASUS BSP : Show "+" on charging icon +++
+struct extcon_dev qc_stat;
+#define SWITCH_NXP_NOT_QUICK_CHARGING       6
+#define SWITCH_NXP_QUICK_CHARGING           5
+#define SWITCH_QC_NOT_QUICK_CHARGING        4
+#define SWITCH_QC_QUICK_CHARGING            3
+#define SWITCH_QC_NOT_QUICK_CHARGING_PLUS   2
+#define SWITCH_QC_QUICK_CHARGING_PLUS       1
+#define SWITCH_QC_OTHER	                    0
+void set_qc_stat(union power_supply_propval *val)
+{
+	int stat;
+	int set = SWITCH_QC_OTHER;
+	int asus_status;
+
+	if (g_Charger_mode)
+		return;
+
+	stat = val->intval;
+	asus_status = asus_get_batt_status();
+
+	if (asus_status == NORMAL) {
+		set = SWITCH_QC_OTHER;
+		CHG_DBG("stat: %d, switch: %d\n", stat, set);
+		asus_extcon_set_state_sync(smbchg_dev->quickchg_extcon, set);
+		return;
+	}
+
+	switch (stat) {
+	//"qc" stat happends in charger mode only, refer to smblib_get_prop_batt_status
+	case POWER_SUPPLY_STATUS_CHARGING:
+	case POWER_SUPPLY_STATUS_NOT_CHARGING:
+	case POWER_SUPPLY_STATUS_QUICK_CHARGING:
+	case POWER_SUPPLY_STATUS_QUICK_CHARGING_PLUS:
+		if (asus_get_prop_batt_capacity(smbchg_dev) <= 70) {
+			if (asus_status == NXP)
+				set = SWITCH_NXP_QUICK_CHARGING;
+			else if (asus_status == QC)
+				set = SWITCH_QC_QUICK_CHARGING;
+			else if (asus_status == QC_PLUS)
+				set = SWITCH_QC_QUICK_CHARGING_PLUS;
+		} else {
+			if (asus_status == NXP)
+				set = SWITCH_NXP_NOT_QUICK_CHARGING;
+			else if (asus_status == QC)
+				set = SWITCH_QC_NOT_QUICK_CHARGING;
+			else if (asus_status == QC_PLUS)
+				set = SWITCH_QC_NOT_QUICK_CHARGING_PLUS;
+		}
+		asus_extcon_set_state_sync(smbchg_dev->quickchg_extcon, set);
+		break;
+	default:
+		set = SWITCH_QC_OTHER;
+		asus_extcon_set_state_sync(smbchg_dev->quickchg_extcon, set);
+		break;
+	}
+
+	CHG_DBG("stat: %d, switch: %d\n", stat, set);
+	return;
+}
+//ASUS BSP : Show "+" on charging icon +++
+
+void asus_probe_pmic_settings(struct smb_charger *chg)
+{
+	int rc;
+
+//A-1:0x1153
+	rc = smblib_masked_write(chg, DCDC_OTG_CFG_REG, OTG_EN_SRC_CFG_BIT, 0);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default DCDC_OTG_CFG_REG rc=%d\n", rc);
+	}
+//A-2:0x1070
+	rc = smblib_write(chg, CHGR_FLOAT_VOLTAGE_CFG_REG, 0x4C);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default FLOAT_VOLTAGE_CFG_REG rc=%d\n", rc);
+	}
+/*A-3: set tcc & stcc in dtsi */
+//A-3:0x1063
+	if ((g_ASUS_hwID >= ZS660KL_ER1 && g_ASUS_hwID <= ZS660KL_MP) ||
+		(g_ASUS_hwID >= ZS660KL_CN_ER1 && g_ASUS_hwID <= ZS660KL_CN_MP))
+		rc = smblib_write(chg, CHGR_TCCC_CHARGE_CURRENT_TERMINATION_CFG, 0x06);
+	else
+		rc = smblib_write(chg, CHGR_TCCC_CHARGE_CURRENT_TERMINATION_CFG, 0x03);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default CHGR_TCCC_CHARGE_CURRENT_TERMINATION_CFG rc=%d\n", rc);
+	}
+//A-4:0x1552
+	rc = smblib_write(chg, TYPE_C_CURRSRC_CFG_REG, 0x00);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default TYPE_C_CURRSRC_CFG_REG rc=%d\n", rc);
+	}
+//A-5:0x1152
+	/*rc = smblib_write(chg, DCDC_OTG_CURRENT_LIMIT_CFG_REG, 0x00);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default DCDC_OTG_CURRENT_LIMIT_CFG_REG rc=%d\n", rc);
+	}*/
+//A-12:0x1090
+	rc = smblib_write(chg, JEITA_EN_CFG_REG, 0x10);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default JEITA_EN_CFG_REG rc=%d\n", rc);
+	}
+//A-13:0x155A
+	rc = smblib_masked_write(chg, TYPE_C_LEGACY_CABLE_CFG_REG, LEGACY_CABLE_DET_WINDOW_MASK, 0x2);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default TYPE_C_LEGACY_CABLE_CFG_REG rc=%d\n", rc);
+	}
+	rc = smblib_masked_write(chg, TYPE_C_LEGACY_CABLE_CFG_REG, EN_LEGACY_CABLE_DETECTION_BIT, 0x0);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default TYPE_C_LEGACY_CABLE_CFG_REG rc=%d\n", rc);
+	}
+/*
+//A-14:0x1380
+	//WA for air charing issue, this is from power team's request
+	rc = smblib_masked_write(chg, USBIN_AICL_OPTIONS_CFG_REG, SUSPEND_ON_COLLAPSE_USBIN_BIT, 0);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set USBIN_AICL_OPTIONS_CFG_REG rc=%d\n", rc);
+	}
+//A-15:0x1365
+	//Set the USBIN_IN_COLLAPSE from 5ms to 30us.
+	//Fix the issue. The VBUS still keeps HIGH after unplug charger
+	rc = smblib_masked_write(chg, USBIN_LOAD_CFG_REG, USBIN_IN_COLLAPSE_GF_SEL_MASK, 0x3);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set USBIN_LOAD_CFG_REG rc=%d\n", rc);
+	}
+*/
+//A-XX:0x16B4~0x16B7
+	// For INOV SKIN TEMP +++
+	rc = smblib_write(smbchg_dev, SKIN_H_THRESHOLD_MSB_REG, 0x1A);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default SKIN_H_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, SKIN_H_THRESHOLD_LSB_REG, 0x75);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default SKIN_H_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, SKIN_L_THRESHOLD_MSB_REG, 0x1D);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default SKIN_L_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, SKIN_L_THRESHOLD_LSB_REG, 0x01);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default SKIN_L_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+//A-YY:0x1370
+	// For probe initila ICL set to 500mA +++
+	rc = smblib_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG, 0x0A);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default USBIN_CURRENT_LIMIT_CFG_REG rc=%d\n", rc);
+	}
+//A-ZZ:0x1550
+	//For dual port design(VBUS will have drop between USB port transition)
+	rc = smblib_masked_write(chg, TYPE_C_EXIT_STATE_CFG_REG, EXIT_SNK_BASED_ON_CC_BIT, EXIT_SNK_BASED_ON_CC_BIT);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default TYPE_C_EXIT_STATE_CFG_REG rc=%d\n", rc);
+	}
+//A-YY:0x1670
+	rc = smblib_write(chg, MISC_THERMREG_SRC_CFG_REG, 0x00);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default MISC_THERMREG_SRC_CFG_REG rc=%d\n", rc);
+	}
+	//[+++]Change to here from asus_insertion_initial_settings() in smb5-lib.c
+	//Otherwise, the recharge voltage of battery safety will be covered
+	//No.4-1:0x107E
+	rc = smblib_write(chg, CHGR_ADC_RECHARGE_THRESHOLD_MSB_REG, 0x55);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default CHGR_ADC_RECHARGE_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	//No.4-2:0x107F
+	rc = smblib_write(chg, CHGR_ADC_RECHARGE_THRESHOLD_LSB_REG, 0x83);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default CHGR_ADC_RECHARGE_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	//[---]Change to here from asus_insertion_initial_settings() in smb5-lib.c
+
+	//[+++]Modify the spec, allow DCP up to 5A*2A=10W. Need to increase AICL threshold
+	rc = smblib_write(chg, USBIN_CONT_AICL_THRESHOLD_REG, 0x5);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't set default CHGR_ADC_RECHARGE_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	//[---]Modify the spec, allow DCP up to 5A*2A=10W. Need to increase AICL threshold
+
+}
+
+//[+++]Need to check the status of pogo thermal if the device is booting
+//The interrupt could be sent before the qpnp_smb2 probe finish
+void asus_hid_is_connected(void)
+{
+	int ret;
+	int station_cap;
+
+	CHG_DBG("%s start\n", __func__);
+	schedule_delayed_work(&smbchg_dev->asus_thermal_accy_work, 0);
+
+	ret = hid_to_get_battery_cap(&station_cap);
+	if (ret < 0) {
+		CHG_DBG_E("%s: Failed to get station capacity\n", __func__);
+	} else if (station_cap >= 3 && station_cap <= 100 && ASUS_POGO_ID == STATION) {
+			asus_extcon_set_state_sync(g_fgDev->st_bat_cap_extcon, station_cap);
+			asus_extcon_set_state_sync(g_fgDev->st_present_extcon, 1);
+	}
+}
+EXPORT_SYMBOL(asus_hid_is_connected);
+//[---]Need to check the status of pogo thermal if the device is booting
+
+static irqreturn_t thermal_alert_interrupt(int irq, void *dev_id)
+{
+	int rc;
+	u8 reg = 0;
+	u8 pogo_therm_mask = 0xC0;
+	u8 btm_therm_mask = 0x30;
+
+	if (!asp1690e_ready) {
+		CHG_DBG_E("%s: ADC is not ready, bypass interrupt\n", __func__);
+		return IRQ_HANDLED;
+	}
+
+	rerun_thermal_alert_flag = 0;
+	rc = asp1690e_read_reg(0x41, &reg);
+	rc = asp1690e_read_reg(0x42, &reg);
+	if (rc < 0) {		
+		CHG_DBG_E("%s: fail to read asp1690e ADC, rerun thermal alert detction\n", __func__);
+		rerun_thermal_alert_flag = 1;
+		return IRQ_HANDLED;
+	}
+
+	if (reg & pogo_therm_mask) {
+		CHG_DBG("%s: Side Thermal Alert interrupt\n", __func__);
+		schedule_delayed_work(&smbchg_dev->asus_thermal_pogo_work, 0);
+	} else if (reg & btm_therm_mask) {
+		CHG_DBG("%s: Bottom Thermal Alert interrupt\n", __func__);
+		schedule_delayed_work(&smbchg_dev->asus_thermal_btm_work, 0);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t accy_thermal_alert_interrupt(int irq, void *dev_id)
+{
+	struct timespec mtNow, delta_time;
+	long long delta_msec;
+
+	//Use the delta time rather than trigger_level to filter the pulse for station
+	mtNow = current_kernel_time();
+	delta_time = timespec_sub(mtNow, g_last_accy_therm_int);
+	g_last_accy_therm_int = current_kernel_time();
+	delta_msec = (delta_time.tv_sec * NSEC_PER_SEC + delta_time.tv_nsec)/NSEC_PER_MSEC;
+	CHG_DBG("[ACCY]%s. delta = %lld msec.\n", __func__, delta_msec);
+	if (delta_msec < 100)
+		return IRQ_HANDLED;
+
+	CHG_DBG("%s: ACCY Thermal Alert interrupt\n", __func__);
+	schedule_delayed_work(&smbchg_dev->asus_thermal_accy_work, 0);
+	
+	return IRQ_HANDLED;
+}
+
+void asus_probe_gpio_setting(struct platform_device *pdev, struct gpio_control *gpio_ctrl)
+{
+	struct pinctrl *chg_pc;
+	struct pinctrl_state *chg_pcs;
+	int therm_alert_irq = 0, accy_therm_alert_irq = 0;
+	int rc = 0;
+
+	chg_pc = devm_pinctrl_get(&pdev->dev);
+	if (IS_ERR_OR_NULL(chg_pc)) {
+		CHG_DBG_E("%s: failed to get charger pinctrl\n", __func__);
+	}
+	chg_pcs = pinctrl_lookup_state(chg_pc, "chg_gpio_default");
+	if (IS_ERR_OR_NULL(chg_pcs)) {
+		CHG_DBG_E("%s: failed to get charger input pinctrl state from dtsi\n", __func__);
+	}
+	rc = pinctrl_select_state(chg_pc, chg_pcs);
+	if (rc < 0) {
+		CHG_DBG_E("%s: failed to set charger input pinctrl state\n", __func__);
+	}
+
+	//[+++] Add the pinctrl of the mux setting
+	if ((g_ASUS_hwID >= ZS660KL_ER1 && g_ASUS_hwID <= ZS660KL_MP) ||
+		(g_ASUS_hwID >= ZS660KL_CN_ER1 && g_ASUS_hwID <= ZS660KL_CN_MP)) {
+		gpio_ctrl->ADC_MUX_INT_N = of_get_named_gpio(pdev->dev.of_node, "ADC_MUX_INT_N", 0);
+		rc = gpio_request(gpio_ctrl->ADC_MUX_INT_N, "ADC_MUX_INT_N");
+		if (rc)
+			CHG_DBG_E("%s: failed to request ADC_MUX_INT_N\n", __func__);
+		else
+			CHG_DBG("%s: Success to request ADC_MUX_INT_N\n", __func__);
+
+		//thermal alert adc interrupt
+		therm_alert_irq = gpio_to_irq(gpio_ctrl->ADC_MUX_INT_N);
+		if (therm_alert_irq < 0) {
+			CHG_DBG_E("%s: ADC_MUX_INT_N to irq ERROR(%d).\n", __func__, therm_alert_irq);
+		}
+		rc = request_threaded_irq(therm_alert_irq, NULL, thermal_alert_interrupt,
+			IRQF_TRIGGER_FALLING  | IRQF_ONESHOT | IRQF_NO_SUSPEND, "therm_alert", NULL);
+		if (rc < 0)
+			CHG_DBG_E("%s: Failed to request thermal_alert_interrupt\n", __func__);
+		enable_irq_wake(therm_alert_irq);
+
+		gpio_ctrl->PW_ADC_EN = of_get_named_gpio(pdev->dev.of_node, "PW_ADC_EN", 0);
+		rc = gpio_request(gpio_ctrl->PW_ADC_EN, "PW_ADC_EN");
+		if (rc)
+			CHG_DBG_E("%s: failed to request PW_ADC_EN\n", __func__);
+		else
+			CHG_DBG("%s: Success to request PW_ADC_EN\n", __func__);
+	}
+
+	gpio_ctrl->USB2_MUX1_EN= of_get_named_gpio(pdev->dev.of_node, "USB2_MUX1_EN", 0);
+	rc = gpio_request(gpio_ctrl->USB2_MUX1_EN, "USB2_MUX1_EN");
+	if (rc)
+		CHG_DBG_E("%s: failed to request USB2_MUX1_EN\n", __func__);
+	else
+		CHG_DBG("%s: Success to request USB2_MUX1_EN\n", __func__);
+
+	gpio_ctrl->PMI_MUX_EN = of_get_named_gpio(pdev->dev.of_node, "PMI_MUX_EN", 0);
+	rc = gpio_request(gpio_ctrl->PMI_MUX_EN, "PMI_MUX_EN");
+	if (rc)
+		CHG_DBG_E("%s: failed to request PMI_MUX_EN\n", __func__);
+	else
+		CHG_DBG("%s: Success to request PMI_MUX_EN\n", __func__);
+	//[---] Add the pinctrl of the mux setting
+
+	gpio_ctrl->POGO_OTG_EN = of_get_named_gpio(pdev->dev.of_node, "POGO_OTG_EN", 0);
+	rc = gpio_request(gpio_ctrl->POGO_OTG_EN, "POGO_OTG_EN");
+	if (rc)
+		CHG_DBG_E("%s: failed to request POGO_OTG_EN\n", __func__);
+	else
+		CHG_DBG("%s: Success to request POGO_OTG_EN\n", __func__);
+
+	gpio_ctrl->BTM_OTG_EN = of_get_named_gpio(pdev->dev.of_node, "BTM_OTG_EN", 0);
+	rc = gpio_request(gpio_ctrl->BTM_OTG_EN, "BTM_OTG_EN");
+	if (rc)
+		CHG_DBG_E("%s: failed to request BTM_OTG_EN\n", __func__);
+	else
+		CHG_DBG("%s: Success to request BTM_OTG_EN\n", __func__);
+
+	gpio_ctrl->POGO_OVP_ACOK = of_get_named_gpio(pdev->dev.of_node, "POGO_OVP_ACOK", 0);
+	rc = gpio_request(gpio_ctrl->POGO_OVP_ACOK, "POGO_OVP_ACOK");
+	if (rc)
+		CHG_DBG_E("%s: failed to request POGO_OVP_ACOK\n", __func__);
+	else
+		CHG_DBG("%s: Success to request POGO_OVP_ACOK\n", __func__);
+
+	gpio_ctrl->BTM_OVP_ACOK = of_get_named_gpio(pdev->dev.of_node, "BTM_OVP_ACOK", 0);
+	rc = gpio_request(gpio_ctrl->BTM_OVP_ACOK, "BTM_OVP_ACOK");
+	if (rc)
+		CHG_DBG_E("%s: failed to request BTM_OVP_ACOK\n", __func__);
+	else
+		CHG_DBG("%s: Success to request BTM_OVP_ACOK\n", __func__);
+
+	gpio_ctrl->PCA9468_EN = of_get_named_gpio(pdev->dev.of_node, "PCA9468_EN", 0);
+	rc = gpio_request(gpio_ctrl->PCA9468_EN, "PCA9468_EN");
+	if (rc)
+		CHG_DBG_E("%s: failed to request PCA9468_EN\n", __func__);
+	else
+		CHG_DBG("%s: Success to request PCA9468_EN\n", __func__);
+
+	gpio_ctrl->POGO_TEMP_INT = of_get_named_gpio(pdev->dev.of_node, "POGO_TEMP_INT", 0);
+	rc = gpio_request(gpio_ctrl->POGO_TEMP_INT, "POGO_TEMP_INT");
+	if (rc)
+		CHG_DBG_E("%s: failed to request POGO_TEMP_INT\n", __func__);
+	else
+		CHG_DBG("%s: Success to request POGO_TEMP_INT\n", __func__);
+
+	//ACCY thermal alert adc interrupt
+	accy_therm_alert_irq = gpio_to_irq(gpio_ctrl->POGO_TEMP_INT);
+	if (accy_therm_alert_irq < 0) {
+		CHG_DBG_E("%s: POGO_TEMP_INT to irq ERROR(%d).\n", __func__, accy_therm_alert_irq);
+	}
+	rc = request_threaded_irq(accy_therm_alert_irq, NULL, accy_thermal_alert_interrupt,
+		IRQF_TRIGGER_FALLING  | IRQF_TRIGGER_RISING | IRQF_ONESHOT | IRQF_NO_SUSPEND, "accy_therm_alert", NULL);
+	if (rc < 0)
+		CHG_DBG_E("%s: Failed to request accy_thermal_alert_interrupt\n", __func__);
+}
+
+// POGO/BTM Thermal Alert Function +++
+void asus_thermal_pogo_work(struct work_struct *work)
+{
+	int rc;
+	u8 reg = 0;
+	int vbus_status, otg_status;
+
+	if (!asp1690e_ready) {
+		CHG_DBG_E("%s: ASP1690E not ready, return\n", __func__);
+		return;
+	}
+
+	rc = asp1690e_read_reg(0x47, &reg);
+	if (rc < 0) {
+		CHG_DBG_E("%s: fail to read ADC 0x47h\n", __func__);
+		return;
+	}
+
+	if (reg <= 0x31) {
+		CHG_DBG("%s: Side Thermal Alert trigger HIGH, reg = 0x%x\n", __func__, reg);
+		usb_alert_flag = 1;
+		if (g_Charger_mode)
+			cos_alert_once_flag = 1;
+		vbus_status = gpio_get_value(global_gpio->POGO_OVP_ACOK);
+		otg_status = gpio_get_value(global_gpio->POGO_OTG_EN);
+		if (!vbus_status) {
+			smblib_set_usb_suspend(smbchg_dev, true);
+			pmic_set_pca9468_charging(false);
+			rc = smblib_write(smbchg_dev, DCDC_CMD_OTG_REG, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->POGO_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio BTM_OTG_EN\n", __func__);
+			g_temp_side_state = 2;
+		} else if (otg_status) {
+			g_temp_side_state = 2;
+			msleep(100);
+			rc = smblib_write(smbchg_dev, DCDC_CMD_OTG_REG, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->POGO_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio POGO_OTG_EN\n", __func__);
+		} else {
+			g_temp_side_state = 1;
+		}
+		asp1690e_write_reg(0x3C,0x41);
+		asp1690e_write_reg(0x3D,0x00);
+	} else {
+		CHG_DBG("%s: Side Thermal Alert trigger LOW, reg = 0x%x\n", __func__, reg);
+		usb_alert_flag = 0;
+		if (!gpio_get_value(global_gpio->POGO_OVP_ACOK) && (g_temp_side_state == 2))
+			usb_alert_keep_suspend_flag = 1;
+		g_temp_side_state = 0;
+		asp1690e_write_reg(0x3C,0xFF);
+		asp1690e_write_reg(0x3D,0x31);
+	}
+
+	if (g_temp_side_state == 2 || g_temp_btm_state == 2 || g_temp_station_state == 2 || g_temp_INBOX_DT_state == 2)
+		g_temp_state = 2;
+	else if (g_temp_side_state == 1 || g_temp_btm_state == 1 || g_temp_station_state == 1 || g_temp_INBOX_DT_state == 1)
+		g_temp_state = 1;
+	else
+		g_temp_state = 0;
+	asus_extcon_set_state_sync(smbchg_dev->thermal_extcon, g_temp_state);
+
+	CHG_DBG("%s: report_state = %d\n", __func__, g_temp_state);
+}
+
+void asus_thermal_btm_work(struct work_struct *work)
+{
+	int rc;
+	u8 reg = 0;
+	int vbus_status, otg_status;
+
+	if (!asp1690e_ready) {
+		CHG_DBG_E("%s: ASP1690E not ready, return\n", __func__);
+		return;
+	}
+
+	rc = asp1690e_read_reg(0x48, &reg);
+	if (rc < 0) {
+		CHG_DBG_E("%s: fail to read ADC 0x48h\n", __func__);
+		return;
+	}
+
+	if (reg <= 0x31) {
+		CHG_DBG("%s: Bottom Thermal Alert trigger HIGH, reg = 0x%x\n", __func__, reg);
+		usb_alert_flag = 1;
+		if (g_Charger_mode)
+			cos_alert_once_flag = 1;
+		vbus_status = gpio_get_value(global_gpio->BTM_OVP_ACOK);
+		otg_status = gpio_get_value(global_gpio->BTM_OTG_EN);
+		if (!vbus_status) {
+			smblib_set_usb_suspend(smbchg_dev, true);
+			pmic_set_pca9468_charging(false);
+			rc = smblib_write(smbchg_dev, DCDC_CMD_OTG_REG, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->BTM_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio BTM_OTG_EN\n", __func__);
+			g_temp_side_state = 2;
+		} else if (otg_status) {
+			g_temp_side_state = 2;
+			msleep(100);
+			rc = smblib_write(smbchg_dev, DCDC_CMD_OTG_REG, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->BTM_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio BTM_OTG_EN\n", __func__);
+		} else {
+			g_temp_side_state = 1;
+		}
+		asp1690e_write_reg(0x3E,0x41);
+		asp1690e_write_reg(0x3F,0x00);
+	} else {
+		CHG_DBG("%s: Bottom Thermal Alert trigger LOW, reg = 0x%x\n", __func__, reg);
+		usb_alert_flag = 0;
+		if (!gpio_get_value(global_gpio->BTM_OVP_ACOK) && (g_temp_side_state == 2))
+			usb_alert_keep_suspend_flag = 1;
+		g_temp_side_state = 0;
+		asp1690e_write_reg(0x3E,0xFF);
+		asp1690e_write_reg(0x3F,0x31);
+	}
+
+	if (g_temp_side_state == 2 || g_temp_btm_state == 2 || g_temp_station_state == 2 || g_temp_INBOX_DT_state == 2)
+		g_temp_state = 2;
+	else if (g_temp_side_state == 1 || g_temp_btm_state == 1 || g_temp_station_state == 1 || g_temp_INBOX_DT_state == 1)
+		g_temp_state = 1;
+	else
+		g_temp_state = 0;
+	asus_extcon_set_state_sync(smbchg_dev->thermal_extcon, g_temp_state);
+
+	CHG_DBG("%s: report_state = %d\n", __func__, g_temp_state);
+}
+// POGO/BTM Thermal Alert Function ---
+
+//[+++] Add for station update when screen on
+static int smb5_drm_notifier (struct notifier_block *nb,
+					unsigned long val, void *data){
+	struct msm_drm_notifier *evdata = data;
+	unsigned int blank;
+	blank = *(int *)(evdata->data);
+
+	if (val != MSM_DRM_EARLY_EVENT_BLANK)
+		return 0;
+	switch (blank) {
+		case MSM_DRM_BLANK_POWERDOWN:
+			//CHG_DBG("smb5_drm_notifier. panel power off\n");
+			break;
+		case MSM_DRM_BLANK_UNBLANK:
+			//CHG_DBG("smb5_drm_notifier. panel power on\n");
+			if (ASUS_POGO_ID == STATION)
+				fg_station_attach_notifier(true);
+			break;
+		default:
+			break;
+	}
+	return NOTIFY_DONE;
+}
+//[+++] Add for station update when screen on
+
+// ASUS BSP Austin_T : Add attributes +++
+static ssize_t boot_completed_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (boot_completed_flag == 0 && tmp == 1)	// ASUS BSP : Reset smart_stop_flag
+		smartchg_stop_flag = 0;
+
+	if (tmp == 0) {
+		boot_completed_flag = false;
+		CHG_DBG("%s: boot_completed_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		boot_completed_flag = true;
+		CHG_DBG("%s: boot_completed_flag = 1\n", __func__);
+		if ((g_ASUS_hwID >= ZS660KL_ER1 && g_ASUS_hwID <= ZS660KL_MP) ||
+			(g_ASUS_hwID >= ZS660KL_CN_ER1 && g_ASUS_hwID <= ZS660KL_CN_MP)) {
+			schedule_delayed_work(&smbchg_dev->asus_thermal_btm_work, 0);
+			schedule_delayed_work(&smbchg_dev->asus_thermal_pogo_work, msecs_to_jiffies(100));
+		}
+		schedule_delayed_work(&g_fgDev->asus_battery_version_work, 0);
+
+		if (ASUS_POGO_ID == STATION)
+			fg_station_attach_notifier(true);
+	}
+
+	return len;
+}
+
+static ssize_t boot_completed_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", boot_completed_flag);
+}
+
+static ssize_t charger_limit_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		charger_limit_enable_flag = 0;
+		rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+		if (PE_check_asus_vid() || rt_chg_check_asus_vid())
+			pmic_set_pca9468_charging(true);
+	} else if (tmp == 1) {
+		charger_limit_enable_flag = 1;
+		if (asus_get_prop_batt_capacity(smbchg_dev) >= charger_limit_value) {
+			rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, 0);
+			if (PE_check_asus_vid() || rt_chg_check_asus_vid())
+				pmic_set_pca9468_charging(false);
+		} else {
+			rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+			if (PE_check_asus_vid() || rt_chg_check_asus_vid())
+				pmic_set_pca9468_charging(true);
+		}
+	}
+	CHG_DBG("%s: charger_limit_enable = %d", __func__, charger_limit_enable_flag);
+
+	return len;
+}
+
+static ssize_t charger_limit_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", charger_limit_enable_flag);
+}
+
+static ssize_t charger_limit_percent_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp;
+
+	tmp = simple_strtol(buf, NULL, 10);
+	charger_limit_value = tmp;
+	CHG_DBG("%s: charger_limit_percent set to = %d", __func__, charger_limit_value);
+
+	return len;
+}
+
+static ssize_t charger_limit_percent_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", charger_limit_value);
+}
+
+static ssize_t vbus_side_btm_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	bool vbus_bottom;
+	bool vbus_side;
+
+	vbus_side = !gpio_get_value_cansleep(global_gpio->POGO_OVP_ACOK);
+	vbus_bottom = !gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK);
+
+	if (vbus_side)
+		return sprintf(buf, "2\n");
+	else if (vbus_bottom)
+		return sprintf(buf, "1\n");
+	else
+		return sprintf(buf, "0\n");
+}
+
+static ssize_t CHG_TYPE_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	if (asus_adapter_detecting_flag) {
+		return sprintf(buf, "OTHERS\n");
+	} else {
+		if (asus_CHG_TYPE == 750)
+			return sprintf(buf, "DCP_ASUS_750K_2A\n");
+		else if (asus_CHG_TYPE == 200)
+			return sprintf(buf, "HVDCP_ASUS_200K_2A\n");
+		else
+			return sprintf(buf, "OTHERS\n");
+	}
+}
+
+static ssize_t asus_usb_suspend_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		CHG_DBG("%s: Set EnableCharging\n", __func__);
+		asus_suspend_cmd_flag = 0;
+		rc = smblib_set_usb_suspend(smbchg_dev, 0);
+		if (PE_check_asus_vid() || rt_chg_check_asus_vid())
+			pmic_set_pca9468_charging(true);
+	} else if (tmp == 1) {
+		CHG_DBG("%s: Set DisableCharging\n", __func__);
+		asus_suspend_cmd_flag = 1;
+		rc = smblib_set_usb_suspend(smbchg_dev, 1);
+		if (PE_check_asus_vid() || rt_chg_check_asus_vid())
+			pmic_set_pca9468_charging(false);
+	}
+
+	power_supply_changed(smbchg_dev->batt_psy);
+
+	return len;
+}
+
+static ssize_t asus_usb_suspend_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	u8 reg;
+	int ret;
+	int suspend;
+
+	ret = smblib_read(smbchg_dev, USBIN_CMD_IL_REG, &reg);
+	suspend = reg & USBIN_SUSPEND_BIT;
+
+	return sprintf(buf, "%d\n", suspend);
+}
+
+static ssize_t TypeC_Side_Detect2_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int typec_side_detect, open, cc_pin;
+	u8 reg;
+	int ret = -1;
+
+	ret = smblib_read(smbchg_dev, TYPE_C_MISC_STATUS_REG, &reg);
+	open = reg & CC_ATTACHED_BIT;
+
+	ret = smblib_read(smbchg_dev, TYPE_C_MISC_STATUS_REG, &reg);
+	cc_pin = reg & CC_ORIENTATION_BIT;
+
+	if (open == 0)
+		typec_side_detect = 0;
+	else if (cc_pin == 0)
+		typec_side_detect = 1;
+	else
+		typec_side_detect = 2;
+
+	return sprintf(buf, "%d\n", typec_side_detect);
+}
+
+static ssize_t thermal_gpio_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int status = 0;
+
+	status = gpio_get_value(global_gpio->POGO_TEMP_INT);
+	return sprintf(buf, "%d\n", status);
+}
+
+static ssize_t INOV_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		rc = smblib_write(smbchg_dev, MISC_THERMREG_SRC_CFG_REG, 0x00);
+		if (rc < 0)
+			dev_err(smbchg_dev->dev, "Couldn't set MISC_THERMREG_SRC_CFG_REG 0x0\n");
+		CHG_DBG("%s: Disable INOV function\n", __func__);
+	} else if (tmp == 1) {
+		rc = smblib_write(smbchg_dev, MISC_THERMREG_SRC_CFG_REG, 0x07);
+		if (rc < 0)
+			dev_err(smbchg_dev->dev, "Couldn't set MISC_THERMREG_SRC_CFG_REG 0x7\n");
+		CHG_DBG("%s: Enable INOV function\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t INOV_enable_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int rc;
+	u8 reg;
+
+    rc = smblib_read(smbchg_dev, MISC_THERMREG_SRC_CFG_REG, &reg);
+
+	return sprintf(buf, "INOV_reg 0x1670 = 0x%x\n", reg);
+}
+
+static ssize_t disable_input_suspend_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		CHG_DBG("%s: Thermal Test over, can suspend input\n", __func__);
+		no_input_suspend_flag = 0;
+		rc = smblib_write(smbchg_dev, JEITA_EN_CFG_REG, 0x10);		
+		if (rc < 0)
+			CHG_DBG_E("%s: Failed to set JEITA_EN_CFG_REG\n", __func__);
+	} else if (tmp == 1) {
+		CHG_DBG("%s: Thermal Test, can not suspend input\n", __func__);
+		no_input_suspend_flag = 1;
+		rc = smblib_write(smbchg_dev, JEITA_EN_CFG_REG, 0x00);
+		if (rc < 0)
+			CHG_DBG_E("%s: Failed to set JEITA_EN_CFG_REG\n", __func__);
+	}
+
+	rc = smblib_set_usb_suspend(smbchg_dev, 0);
+
+	return len;
+}
+
+static ssize_t disable_input_suspend_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", no_input_suspend_flag);
+}
+
+static ssize_t usb_thermal_btm_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int rc;
+	u8 reg;
+
+	rc = asp1690e_read_reg(0x48, &reg);
+	CHG_DBG("%s: usb_thermal_side reg : 0x%x\n", __func__, reg);
+
+	if (reg > 0x31)
+		return sprintf(buf, "PASS\n");
+	else
+		return sprintf(buf, "FAIL\n");
+}
+
+static ssize_t usb_thermal_side_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int rc;
+	u8 reg;
+
+	rc = asp1690e_read_reg(0x47, &reg);
+	CHG_DBG("%s: usb_thermal_side reg : 0x%x\n", __func__, reg);
+
+	if (reg > 0x31)
+		return sprintf(buf, "PASS\n");
+	else
+		return sprintf(buf, "FAIL\n");
+}
+
+static ssize_t get_usb_mux_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	bool usb2_mux1_stats, pmi_mux_stats;
+	bool btm_otg_stats, pogo_otg_stats;
+	usb2_mux1_stats = gpio_get_value_cansleep(global_gpio->USB2_MUX1_EN);
+	pmi_mux_stats = gpio_get_value_cansleep(global_gpio->PMI_MUX_EN);
+
+	btm_otg_stats = gpio_get_value_cansleep(global_gpio->BTM_OTG_EN);
+	pogo_otg_stats = gpio_get_value_cansleep(global_gpio->POGO_OTG_EN);
+
+	return sprintf(buf, "usb2_mux1_stats : %d\npmi_mux_stats : %d\nbtm_otg_stats : %d\npogo_otg_stats : %d\n",
+					usb2_mux1_stats, pmi_mux_stats, btm_otg_stats, pogo_otg_stats);
+}
+//[+++]Open an interface to change the specified usb_mux value
+static ssize_t force_usb_mux_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int tmp, rc;
+	int usb2_mux1_en = 0, pmi_mux_en = 0;
+
+	tmp = simple_strtol(buf, NULL, 10);
+	CHG_DBG("%s: Set Force_USB_MUX : %d\n", __func__, tmp);
+	g_force_usb_mux = tmp;
+	if (g_force_usb_mux == 2) {
+		usb2_mux1_en = 0;
+		pmi_mux_en = 1;
+		CHG_DBG("g_force_usb_mux is 2, force to use the BTM debug\n");
+		rc = gpio_direction_output(global_gpio->USB2_MUX1_EN, usb2_mux1_en);
+		if (rc)
+			CHG_DBG_E("%s: failed to control USB2_MUX1_EN\n", __func__);
+
+		rc = gpio_direction_output(global_gpio->PMI_MUX_EN, pmi_mux_en);
+		if (rc)
+			CHG_DBG_E("%s: failed to control PMI_MUX_EN\n", __func__);
+	}
+	return count;
+}
+
+static ssize_t force_usb_mux_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "g_force_usb_mux : %d\n", g_force_usb_mux);
+}
+//[---]Open an interface to change the specified usb_mux value
+
+static ssize_t get_gpio_highlow_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	bool pogo_ovp_stats, btm_ovp_stats;
+
+	pogo_ovp_stats = gpio_get_value_cansleep(global_gpio->POGO_OVP_ACOK);
+	btm_ovp_stats = gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK);
+
+	return sprintf(buf, "pogo_ovp_stats : %d\nbtm_ovp_stats : %d\n", pogo_ovp_stats, btm_ovp_stats);
+}
+
+static ssize_t fake_er_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "fake_er_stage_flag : %d\n", fake_er_stage_flag);
+}
+
+static ssize_t fake_er_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		fake_er_stage_flag = false;
+		CHG_DBG("%s: set fake_er_stage_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		fake_er_stage_flag = true;
+		CHG_DBG("%s: set fake_er_stage_flag = 1\n", __func__);
+	}
+
+	return len;
+}
+
+static ssize_t ultra_bat_life_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		ultra_bat_life_flag = false;
+		CHG_DBG("%s: ultra_bat_life_flag = 0, cancel CHG_Limit\n", __func__);
+	} else if (tmp == 1) {
+		ultra_bat_life_flag = true;
+		write_CHGLimit_value(0);
+		CHG_DBG("%s: ultra_bat_life_flag = 1, CHG_Limit = 60\n", __func__);
+		if (asus_get_prop_batt_capacity(smbchg_dev) > 60 && asus_get_prop_usb_present(smbchg_dev)) {
+			rc = smblib_set_usb_suspend(smbchg_dev, true);
+			CHG_DBG("%s: Capcity > 60, input suspend\n", __func__);
+		}
+	}
+
+	return len;
+}
+
+static ssize_t ultra_bat_life_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", ultra_bat_life_flag);
+}
+
+static ssize_t ultra_cos_spec_time_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp;
+
+	tmp = simple_strtol(buf, NULL, 10);
+	g_ultra_cos_spec_time = tmp;
+	CHG_DBG("%s: ultra_cos_spec_time set to = %d\n", __func__, g_ultra_cos_spec_time);
+
+	return len;
+}
+
+static ssize_t ultra_cos_spec_time_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", g_ultra_cos_spec_time);
+}
+
+static ssize_t smartchg_stop_charging_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+	int rc;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		CHG_DBG("%s: Smart charge enable charging\n", __func__);
+		smartchg_stop_flag = 0;
+		rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, CHARGING_ENABLE_CMD_BIT);
+		if (rc < 0) {
+			printk("[BAT][CHG] Couldn't write charging_enable rc = %d\n", rc);
+			return rc;
+		}
+	} else if (tmp == 1) {
+		CHG_DBG("%s: Smart charge stop charging\n", __func__);
+		smartchg_stop_flag = 1;
+		rc = smblib_masked_write(smbchg_dev, CHARGING_ENABLE_CMD_REG, CHARGING_ENABLE_CMD_BIT, 0);
+		if (rc < 0) {
+			printk("[BAT][CHG] Couldn't write charging_enable rc = %d\n", rc);
+			return rc;
+		}
+	}
+
+	return len;
+}
+
+static ssize_t smartchg_stop_charging_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", smartchg_stop_flag);
+}
+
+static ssize_t demo_app_property_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		demo_app_property_flag = false;
+		CHG_DBG("%s: demo_app_property_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		demo_app_property_flag = true;
+		demo_recharge_delta = 2;
+		CHG_DBG("%s: demo_app_property_flag = 1\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t demo_app_property_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", demo_app_property_flag);
+}
+
+static ssize_t cn_demo_app_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		cn_demo_app_flag = false;
+		CHG_DBG("%s: cn_demo_app_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		cn_demo_app_flag = true;
+		demo_recharge_delta = 2;
+		CHG_DBG("%s: cn_demo_app_flag = 1\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t cn_demo_app_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", cn_demo_app_flag);
+}
+
+static ssize_t force_station_ultra_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		force_station_ultra_flag = false;
+		CHG_DBG("%s: force_station_ultra_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		force_station_ultra_flag = true;
+		CHG_DBG("%s: force_station_ultra_flag = 1\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t force_station_ultra_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", force_station_ultra_flag);
+}
+
+//[+++] Add for the balance of charging and heat
+static ssize_t game_type_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int tmp = 0;
+
+	tmp = buf[0] - 48;
+
+	if (tmp == 0) {
+		game_type_flag = false;
+		CHG_DBG("%s: game_type_flag = 0\n", __func__);
+	} else if (tmp == 1) {
+		game_type_flag = true;
+		CHG_DBG("%s: game_type_flag = 1\n", __func__);
+    }
+
+	return len;
+}
+
+static ssize_t game_type_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", game_type_flag);
+}
+//[---] Add for the balance of charging and heat
+
+static DEVICE_ATTR(boot_completed, 0664, boot_completed_show, boot_completed_store);
+static DEVICE_ATTR(charger_limit_enable, 0664, charger_limit_enable_show, charger_limit_enable_store);
+static DEVICE_ATTR(charger_limit_percent, 0664, charger_limit_percent_show, charger_limit_percent_store);
+static DEVICE_ATTR(vbus_side_btm, 0664, vbus_side_btm_show, NULL);
+static DEVICE_ATTR(CHG_TYPE, 0664, CHG_TYPE_show, NULL);
+static DEVICE_ATTR(asus_usb_suspend, 0664, asus_usb_suspend_show, asus_usb_suspend_store);
+static DEVICE_ATTR(TypeC_Side_Detect2, 0664, TypeC_Side_Detect2_show, NULL);
+static DEVICE_ATTR(thermal_gpio, 0664, thermal_gpio_show, NULL);
+static DEVICE_ATTR(INOV_enable, 0664, INOV_enable_show, INOV_enable_store);
+static DEVICE_ATTR(disable_input_suspend, 0664, disable_input_suspend_show, disable_input_suspend_store);
+static DEVICE_ATTR(usb_thermal_btm, 0664, usb_thermal_btm_show, NULL);
+static DEVICE_ATTR(usb_thermal_side, 0664, usb_thermal_side_show, NULL);
+static DEVICE_ATTR(get_usb_mux, 0664, get_usb_mux_show, NULL);
+static DEVICE_ATTR(force_usb_mux, 0664, force_usb_mux_show, force_usb_mux_store);
+static DEVICE_ATTR(get_gpio_highlow, 0664, get_gpio_highlow_show, NULL);
+static DEVICE_ATTR(fake_er, 0664, fake_er_show, fake_er_store);
+static DEVICE_ATTR(ultra_bat_life, 0664, ultra_bat_life_show, ultra_bat_life_store);
+static DEVICE_ATTR(ultra_cos_spec_time, 0664, ultra_cos_spec_time_show, ultra_cos_spec_time_store);
+static DEVICE_ATTR(smartchg_stop_charging, 0664, smartchg_stop_charging_show, smartchg_stop_charging_store);
+static DEVICE_ATTR(demo_app_property, 0664, demo_app_property_show, demo_app_property_store);
+static DEVICE_ATTR(cn_demo_app, 0664, cn_demo_app_show, cn_demo_app_store);
+static DEVICE_ATTR(force_station_ultra, 0664, force_station_ultra_show, force_station_ultra_store);
+static DEVICE_ATTR(game_type, 0664, game_type_show, game_type_store);
+
+static struct attribute *asus_smblib_attrs[] = {
+	&dev_attr_boot_completed.attr,
+	&dev_attr_charger_limit_enable.attr,
+	&dev_attr_charger_limit_percent.attr,
+	&dev_attr_vbus_side_btm.attr,
+	&dev_attr_CHG_TYPE.attr,
+	&dev_attr_asus_usb_suspend.attr,
+	&dev_attr_TypeC_Side_Detect2.attr,
+	&dev_attr_thermal_gpio.attr,
+	&dev_attr_INOV_enable.attr,
+	&dev_attr_disable_input_suspend.attr,
+	&dev_attr_usb_thermal_btm.attr,
+	&dev_attr_usb_thermal_side.attr,
+	&dev_attr_get_usb_mux.attr,
+	&dev_attr_force_usb_mux.attr,
+	&dev_attr_get_gpio_highlow.attr,
+	&dev_attr_fake_er.attr,
+	&dev_attr_ultra_bat_life.attr,
+	&dev_attr_ultra_cos_spec_time.attr,
+	&dev_attr_smartchg_stop_charging.attr,
+	&dev_attr_demo_app_property.attr,
+	&dev_attr_cn_demo_app.attr,
+	&dev_attr_force_station_ultra.attr,
+	&dev_attr_game_type.attr,
+	NULL
+};
+
+static const struct attribute_group asus_smblib_attr_group = {
+	.attrs = asus_smblib_attrs,
+};
+// ASUS BSP Austin_T : Add attributes ---
+
+// ASUS BSP charger : BMMI Adb Interface +++
+#define chargerIC_status_PROC_FILE	"driver/chargerIC_status"
+static struct proc_dir_entry *chargerIC_status_proc_file;
+static int chargerIC_status_proc_read(struct seq_file *buf, void *v)
+{
+	int ret = -1;
+    u8 reg;
+    ret = smblib_read(smbchg_dev, AICL_CMD_REG, &reg);
+    if (ret) {
+		ret = 0;
+    } else {
+    	ret = 1;
+    }
+	seq_printf(buf, "%d\n", ret);
+	return 0;
+}
+
+static int chargerIC_status_proc_open(struct inode *inode, struct  file *file)
+{
+	return single_open(file, chargerIC_status_proc_read, NULL);
+}
+
+static const struct file_operations chargerIC_status_fops = {
+	.owner = THIS_MODULE,
+    .open = chargerIC_status_proc_open,
+    .read = seq_read,
+    .release = single_release,
+};
+
+void static create_chargerIC_status_proc_file(void)
+{
+	chargerIC_status_proc_file = proc_create(chargerIC_status_PROC_FILE, 0644, NULL, &chargerIC_status_fops);
+
+    if (chargerIC_status_proc_file) {
+		CHG_DBG("%s: sucessed!\n", __func__);
+    } else {
+	    CHG_DBG("%s: failed!\n", __func__);
+    }
+}
+// ASUS BSP charger : BMMI Adb Interface ---
+
+//[+++]Reset the variables for station after removing station
+void asus_reset_station_para (void)
+{
+	union power_supply_propval pval = {POWER_SUPPLY_TYPEC_PR_DUAL, };
+
+	station_cable_flag = 0;
+	last_charger_state = BAT_CHARGER_NULL;	//Reset station charger state/stage +++
+	last_charger_statge = BAT_STAGE_NULL;
+
+	// For station get 0% +++
+	//set phone CC = DRP
+	power_supply_set_property(smbchg_dev->usb_psy, POWER_SUPPLY_PROP_TYPEC_POWER_ROLE, &pval);
+	CHG_DBG("%s Station plug out, set phone CC to DRP", __func__);
+	// For station get 0% ---
+
+	//[+++]This is station USB thermal alert case
+	//Need to clear the flag of station USB thermal alert after removing Station
+	station_cap_zero_flag = 0;
+	g_temp_station_state = 0;
+	g_temp_INBOX_DT_state = 0;
+	usb_alert_keep_suspend_flag_ACCY = 0;
+	usb_alert_flag_ACCY = 0;
+	if (g_temp_side_state == 2 || g_temp_btm_state == 2)
+		g_temp_state = 2;
+	else if (g_temp_side_state == 1 || g_temp_btm_state == 1)
+		g_temp_state = 1;
+	else
+		g_temp_state = 0;
+	asus_extcon_set_state_sync(smbchg_dev->thermal_extcon, g_temp_state);
+	CHG_DBG("%s  g_temp_side_state = %d, g_temp_btm_state = %d, report_state = %d\n", __func__, g_temp_side_state, g_temp_btm_state, g_temp_state);
+	//[---]This is station USB thermal alert case
+
+	return;
+}
+//[---]Reset the variables for station after removing station
+
+//ASUS BSP : Add for usb_mux update when there is ACCY inserted +++
+static int pogo_detect_notifier (struct notifier_block *nb, unsigned long val, void *data)
+{
+	enum POGO_ID pogo_type;
+	int rc;
+	int aspd_result = 0;
+
+	pogo_type = val;
+	CHG_DBG("%s: pogo_type : %s", __func__, pogo_id_str[pogo_type]);	
+	ASUSEvtlog("%s: pogo_type : %s", __func__, pogo_id_str[pogo_type]);
+	ASUS_POGO_ID = pogo_type;
+
+	switch (pogo_type) {
+		case NO_INSERT:
+			//[+++]For Dongle device plug-out, also need to update Action-1
+			CHG_DBG("%s: Try to run asus_write_mux_setting_1. \n", __func__);
+			schedule_delayed_work(&smbchg_dev->asus_mux_setting_1_work, msecs_to_jiffies(0));
+			//[---]For Dongle device plug-out, also need to update Action-1
+		case STATION_1ST_UNLOCK:
+		case STATION_UNLOCK:
+			//WA for delaying to receive NO_INSERT change
+			//[+++]Skip to set EN_TRY_SNK for dual port scenario(BTM : charging, SIDE : OTG)
+			if ((ASUS_POGO_ID == NO_INSERT || ASUS_POGO_ID == STATION_1ST_UNLOCK|| ASUS_POGO_ID == STATION_UNLOCK)
+				&& !gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK)) {
+				CHG_DBG("%s. skip to set EN_TRY_SNK\r\n", __func__);
+				rc = smblib_masked_write(smbchg_dev, TYPE_C_MODE_CFG_REG,EN_TRY_SNK_BIT, 0);
+				if (rc < 0)
+					CHG_DBG_E("Couldn't set TYPE_C_MODE_CFG_REG rc=%d\n", rc);
+			}
+			//[---]Skip to set EN_TRY_SNK for dual port scenario(BTM : charging, SIDE : OTG)
+
+			//[+++] Send EXTCON_USB when ACCY remove & BTM SDP/CDP attached
+			aspd_result = asus_get_apsd_result_by_bit();
+			if (ASUS_POGO_ID == NO_INSERT && !gpio_get_value_cansleep(global_gpio->BTM_OVP_ACOK) &&
+				(aspd_result == 1 || aspd_result == 2)) {
+				CHG_DBG("%s. BTM SDP/CDP, set EXTCON_USB true\n", __func__);
+				extcon_set_state_sync(smbchg_dev->extcon, EXTCON_USB, false);
+				schedule_delayed_work(&smbchg_dev->asus_set_usb_extcon_work, msecs_to_jiffies(1500));
+			}
+			//[+++] Send EXTCON_USB when ACCY remove & BTM SDP/CDP attached
+			fg_station_attach_notifier(false);
+			asus_reset_station_para();
+			break;
+		case INBOX:
+		case STATION:
+		case DT:
+			//[+++]For Dongle device plug-in, also need to update Action-1
+			CHG_DBG("%s: Try to run asus_write_mux_setting_1. \n", __func__);
+			schedule_delayed_work(&smbchg_dev->asus_mux_setting_1_work, msecs_to_jiffies(0));
+			//[---]For Dongle device plug-in, also need to update Action-1
+			//[---]For reboot device on Station +++
+			if (get_client_vote(smbchg_dev->usb_icl_votable, PD_VOTER) == 1210000) {
+				CHG_DBG("%s: Station is in PB mode\n", __func__);
+				is_Station_PB = 1;
+			}
+			//[---]For reboot device on Station +++
+			if (pogo_type == STATION)
+				fg_station_attach_notifier(true);
+			break;
+		case PCIE:
+		case OTHER:
+		case ERROR_1:
+		default:
+			break;
+	}
+	return NOTIFY_DONE;
+}
+//ASUS BSP : Add for usb_mux update when there is ACCY inserted ---
+
+extern void do_ec_porta_cc_connect(void);
+//ASUS BSP : Add for ACCY has thermal alert +++
+void asus_thermal_accy_work(struct work_struct *work) {
+	u8 hid_interrupt_result, event;
+	int rc;
+	bool trigger_level, vbus_status, otg_status;
+
+	trigger_level = gpio_get_value_cansleep(global_gpio->POGO_TEMP_INT);
+	CHG_DBG("%s. POGO devie : %s, trigger_level : %d\n", __func__, pogo_id_str[ASUS_POGO_ID], trigger_level);
+	switch (ASUS_POGO_ID) {
+	case STATION_1ST_UNLOCK:
+	case STATION_UNLOCK:
+		rc = ec_i2c_check_interrupt(&hid_interrupt_result, &event);
+		if (rc < 0) {
+			CHG_DBG("failed to get hid_to_check_interrupt!\n");
+			return;
+		} else {
+			if (hid_interrupt_result & BIT(5)){
+				CHG_DBG("%s Port CC !\n",__func__);
+				do_ec_porta_cc_connect();
+			}
+		}
+		break;
+	case STATION:
+		rc = ec_i2c_check_interrupt(&hid_interrupt_result, &event);
+		CHG_DBG("%s. hid_interrupt_result : %d, event : %d\n", __func__, hid_interrupt_result, event);
+		if (rc < 0) {
+			CHG_DBG("failed to get hid_to_check_interrupt!\n");
+			return;
+		} else {
+			CHG_DBG("g_ST_SDP_mode : %d\n", g_ST_SDP_mode);
+			if ((hid_interrupt_result & BIT(0)) && g_ST_SDP_mode == 1) {
+				CHG_DBG("%s. set EXTCON_USB true\n", __func__);
+				extcon_set_state_sync(smbchg_dev->extcon, EXTCON_USB, true);
+			}
+			//[+++]This is station USB thermal alert case
+			if (hid_interrupt_result & BIT(1)) {
+				if (g_ASUS_hwID < ZS660KL_ER1 || (g_ASUS_hwID < ZS660KL_CN_ER1 && g_ASUS_hwID >= ZS660KL_CN_EVB)) {
+					CHG_DBG("[ACCY]Don't support ACCY thermal alert for ER before");
+					return;
+				}
+				if (g_Charger_mode && (event == 2 || event == 1))
+					cos_alert_once_flag = 1;
+				if (event == 2) {
+					smblib_set_usb_suspend(smbchg_dev, true);
+					g_temp_station_state = 2;
+					usb_alert_flag_ACCY = 1;
+					CHG_DBG("%s. Notify the Station Discharging\n", __func__);
+					asus_extcon_set_state_sync(g_fgDev->st_bat_stat_extcon, 3);
+				} else if (event == 1) {
+					g_temp_station_state = 1;
+					usb_alert_flag_ACCY = 1;
+				} else if (event == 0) {
+					usb_alert_flag_ACCY = 0;
+					if (!gpio_get_value(global_gpio->POGO_OVP_ACOK) && (g_temp_station_state == 2))
+						usb_alert_keep_suspend_flag_ACCY = 1;
+					g_temp_station_state = 0;
+				}
+				if (g_temp_side_state == 2 || g_temp_btm_state == 2 || g_temp_station_state == 2 || g_temp_INBOX_DT_state == 2)
+					g_temp_state = 2;
+				else if (g_temp_side_state == 1 || g_temp_btm_state == 1 || g_temp_station_state == 1 || g_temp_INBOX_DT_state == 1)
+					g_temp_state = 1;
+				else
+					g_temp_state = 0;
+				asus_extcon_set_state_sync(smbchg_dev->thermal_extcon, g_temp_state);
+
+				CHG_DBG("%s  g_temp_station_state = %d, report_state = %d\n", __func__, g_temp_station_state, g_temp_state);
+			}
+			//[---]This is station USB thermal alert case
+
+			//[+++] LiJen implement power bank and balance mode
+			if ((hid_interrupt_result & BIT(2)) && is_hall_sensor_detect == true) {
+				union power_supply_propval pval = {POWER_SUPPLY_TYPEC_PR_DUAL, };
+
+				//set phone CC = DRP
+				power_supply_set_property(smbchg_dev->usb_psy, POWER_SUPPLY_PROP_TYPEC_POWER_ROLE , &pval);
+				CHG_DBG("%s AC plugin, set phone CC to DRP",__func__);
+			}
+			//[---] LiJen implement power bank and balance mode
+
+			//[+++++]Lotta_Lu  add for station latch 
+			if (hid_interrupt_result & BIT(5)){
+				CHG_DBG("%s Port CC !\n",__func__);
+				do_ec_porta_cc_connect();
+			}
+			//[-----]Lotta_Lu  add for station latch 
+			
+			/* For Station get 0% +++ */
+			if (hid_interrupt_result & BIT(6)) {
+				union power_supply_propval pval = {POWER_SUPPLY_TYPEC_PR_SINK, };
+				station_cap_zero_flag = 1;
+				fg_station_attach_notifier(false);	//ASUS BSP notifier fg driver +++
+				//set phone CC = UFP
+				power_supply_set_property(smbchg_dev->usb_psy, POWER_SUPPLY_PROP_TYPEC_POWER_ROLE , &pval);
+				CHG_DBG("%s Get station 0% event",__func__);
+			}
+			/* For Station get 0% --- */
+		}
+		break;
+	case INBOX:
+	case DT:
+		if (g_ASUS_hwID < ZS660KL_ER1 || (g_ASUS_hwID < ZS660KL_CN_ER1 && g_ASUS_hwID >= ZS660KL_CN_EVB)) {
+			CHG_DBG("[ACCY]Don't support ACCY thermal alert for ER before");
+			return;
+		}
+		vbus_status = gpio_get_value(global_gpio->POGO_OVP_ACOK);
+		otg_status = gpio_get_value(global_gpio->POGO_OTG_EN);
+		//[+++]If GPIO101 is low, it could trigger a fake thermal interrupt
+		//this is for DT remove AC case
+		if (ASUS_POGO_ID == DT && !gpio_get_value(101)) {
+			CHG_DBG("GPIO 101 is low. Don't handle this thermal alert for DT ACC");
+			return;
+		}
+		//[---]If GPIO101 is low, it could trigger a fake thermal interrupt
+		if (g_Charger_mode && !trigger_level)
+			cos_alert_once_flag = 1;
+		if (!vbus_status && !trigger_level) {
+			smblib_set_usb_suspend(smbchg_dev, true);
+			pmic_set_pca9468_charging(false);
+			//[+++]For OTG disable
+			rc = smblib_masked_write(smbchg_dev, DCDC_CMD_OTG_REG, OTG_EN_BIT, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->POGO_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio BTM_OTG_EN\n", __func__);
+			//[---]For OTG disable
+			g_temp_INBOX_DT_state = 2;
+			usb_alert_flag_ACCY = 1;
+		} else if (otg_status && !trigger_level) {
+			rc = smblib_masked_write(smbchg_dev, DCDC_CMD_OTG_REG, OTG_EN_BIT, 0);
+			if (rc < 0)
+				CHG_DBG_E("%s: Failed to disable pmi_otg_en\n", __func__);
+			rc = gpio_direction_output(global_gpio->POGO_OTG_EN, 0);
+			if (rc)
+				CHG_DBG_E("%s: Failed to disable gpio POGO_OTG_EN\n", __func__);
+			g_temp_INBOX_DT_state = 2;
+			usb_alert_flag_ACCY = 1;
+		} else if (!trigger_level){
+			g_temp_INBOX_DT_state = 1;
+			usb_alert_flag_ACCY = 1;
+		} else if (trigger_level) {
+			usb_alert_flag_ACCY = 0;
+			if (!gpio_get_value(global_gpio->POGO_OVP_ACOK) && (g_temp_INBOX_DT_state == 2))
+				usb_alert_keep_suspend_flag_ACCY = 1;
+			g_temp_INBOX_DT_state = 0;
+		}
+		if (g_temp_side_state == 2 || g_temp_btm_state == 2 || g_temp_station_state == 2 || g_temp_INBOX_DT_state == 2)
+			g_temp_state = 2;
+		else if (g_temp_side_state == 1 || g_temp_btm_state == 1 || g_temp_station_state == 1 || g_temp_INBOX_DT_state == 1)
+			g_temp_state = 1;
+		else
+			g_temp_state = 0;
+
+		asus_extcon_set_state_sync(smbchg_dev->thermal_extcon, g_temp_state);
+
+		CHG_DBG("%s  g_temp_INBOX_DT_state = %d, report_state = %d\n", __func__, g_temp_INBOX_DT_state, g_temp_state);
+		break;
+	default:
+		CHG_DBG("%s. This is not expected case\n", __func__);
+		break;
+	}
+	CHG_DBG("%s  usb_alert_flag_ACCY = %d, usb_alert_keep_suspend_flag_ACCY = %d\n", __func__, usb_alert_flag_ACCY, usb_alert_keep_suspend_flag_ACCY);
+}
+//ASUS BSP : Add for ACCY has thermal alert ---
+
+void asus_set_jeita_temp_thr(void)
+{
+	int rc;
+
+	//A-ZZ:0x1094~0x109B
+	// For JEDI TEMP +++
+	CHG_DBG("%s: Set JEITA temp register\n", __func__);
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_HOT_THRESHOLD_MSB_REG, 0x20);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_HOT_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_HOT_THRESHOLD_LSB_REG, 0xB8);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_HOT_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_COLD_THRESHOLD_MSB_REG, 0x4C);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_COLD_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_COLD_THRESHOLD_LSB_REG, 0xCC);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_COLD_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_THOT_THRESHOLD_MSB_REG, 0x18);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_THOT_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_THOT_THRESHOLD_LSB_REG, 0x1D);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_THOT_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_TCOLD_THRESHOLD_MSB_REG, 0x58);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_TCOLD_THRESHOLD_MSB_REG rc=%d\n", rc);
+	}
+	rc = smblib_write(smbchg_dev, CHGR_JEITA_TCOLD_THRESHOLD_LSB_REG, 0xCD);
+	if (rc < 0) {
+		dev_err(smbchg_dev->dev, "Couldn't set default CHGR_JEITA_TCOLD_THRESHOLD_LSB_REG rc=%d\n", rc);
+	}
+}
+
+void call_smb5_pmsp_extcon(int value)
+{
+	asus_extcon_set_state_sync(smbchg_dev->pmsp_extcon, value);
+}
+EXPORT_SYMBOL(call_smb5_pmsp_extcon);
+
 static int smb5_probe(struct platform_device *pdev)
 {
 	struct smb5 *chip;
 	struct smb_charger *chg;
+	struct gpio_control *gpio_ctrl;	//ASUS BSP +++
 	int rc = 0;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
+
+	//ASUS BSP allocate GPIO control +++
+	gpio_ctrl = devm_kzalloc(&pdev->dev, sizeof(*gpio_ctrl), GFP_KERNEL);
+	if (!gpio_ctrl)
+		return -ENOMEM;
+	//ASUS BSP allocate GPIO control ---
 
 	chg = &chip->chg;
 	chg->dev = &pdev->dev;
@@ -3438,6 +5214,9 @@ static int smb5_probe(struct platform_device *pdev)
 	chg->connector_health = -EINVAL;
 	chg->otg_present = false;
 	chg->main_fcc_max = -EINVAL;
+
+	smbchg_dev = chg;			//ASUS BSP add globe device struct +++
+	global_gpio = gpio_ctrl;		//ASUS BSP add gpio control struct +++
 
 	chg->regmap = dev_get_regmap(chg->dev->parent, NULL);
 	if (!chg->regmap) {
@@ -3473,6 +5252,18 @@ static int smb5_probe(struct platform_device *pdev)
 	/* set driver data before resources request it */
 	platform_set_drvdata(pdev, chip);
 
+	//ASUS BSP : Add asus_workque +++
+	INIT_DELAYED_WORK(&chg->asus_thermal_btm_work, asus_thermal_btm_work);
+	INIT_DELAYED_WORK(&chg->asus_thermal_pogo_work, asus_thermal_pogo_work);
+	INIT_DELAYED_WORK(&chg->asus_thermal_accy_work, asus_thermal_accy_work);
+	//ASUS BSP : Add asus_workque ---
+
+	//ASUS BSP : Charger default PMIC settings +++
+	asus_probe_pmic_settings(chg);
+
+	//ASUS BSP : Request charger GPIO +++
+	asus_probe_gpio_setting(pdev, gpio_ctrl);
+
 	/* extcon registration */
 	chg->extcon = devm_extcon_dev_allocate(chg->dev, smblib_extcon_cable);
 	if (IS_ERR(chg->extcon)) {
@@ -3504,11 +5295,74 @@ static int smb5_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 
+/* ASUS BSP charger+++  asus extcon registration +++ */
+	chg->thermal_extcon = extcon_dev_allocate(asus_extcon_cable);
+	if (IS_ERR(chg->thermal_extcon)) {
+		rc = PTR_ERR(chg->thermal_extcon);
+		dev_err(chg->dev, "[BAT][CHG] failed to allocate ASUS thermal extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+	chg->thermal_extcon->fnode_name = "usb_connector";
+
+	rc = extcon_dev_register(chg->thermal_extcon);
+	if (rc < 0) {
+		dev_err(chg->dev, "[BAT][CHG] failed to register ASUS thermal extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+
+	chg->quickchg_extcon = extcon_dev_allocate(asus_extcon_cable);
+	if (IS_ERR(chg->quickchg_extcon)) {
+		rc = PTR_ERR(chg->quickchg_extcon);
+		dev_err(chg->dev, "[BAT][CHG] failed to allocate ASUS quickchg extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+	chg->quickchg_extcon->fnode_name = "quick_charging";
+
+	rc = extcon_dev_register(chg->quickchg_extcon);
+	if (rc < 0) {
+		dev_err(chg->dev, "[BAT][CHG] failed to register ASUS quickchg extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+
+	chg->pmsp_extcon = extcon_dev_allocate(asus_extcon_cable);
+	if (IS_ERR(chg->pmsp_extcon)) {
+		rc = PTR_ERR(chg->pmsp_extcon);
+		dev_err(chg->dev, "[BAT][CHG] failed to allocate ASUS pmsp extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+	chg->pmsp_extcon->fnode_name = "PowerManagerServicePrinter";
+
+	rc = extcon_dev_register(chg->pmsp_extcon);
+	if (rc < 0) {
+		dev_err(chg->dev, "[BAT][CHG] failed to register ASUS pmsp extcon device rc=%d\n",
+				rc);
+		goto cleanup;
+	}
+/* ASUS BSP charger+++  asus extcon registration --- */
+
 	rc = smb5_init_hw(chip);
 	if (rc < 0) {
 		pr_err("Couldn't initialize hardware rc=%d\n", rc);
 		goto cleanup;
 	}
+
+	//ASUS BSP add for ftm variable +++
+	if (g_ftm_mode)
+		charger_limit_enable_flag = 1;
+
+	// ASUS BSP add a file for SMMI adb interface +++
+	create_chargerIC_status_proc_file();
+
+	//ASUS BSP Austin_T : CHG_ATTRs +++
+	rc = sysfs_create_group(&chg->dev->kobj, &asus_smblib_attr_group);
+	if (rc)
+		goto cleanup;
+	//ASUS BSP Austin_T : CHG_ATTRs ---
 
 	/*
 	 * VBUS regulator enablement/disablement for host mode is handled
@@ -3607,6 +5461,18 @@ static int smb5_probe(struct platform_device *pdev)
 	}
 
 	device_init_wakeup(chg->dev, true);
+	//ASUS BSP : Add for usb_mux update when there is ACCY inserted +++
+	pogo_detect_nb.notifier_call = pogo_detect_notifier;
+	ec_hid_event_register(&pogo_detect_nb);
+	//ASUS BSP : Add for usb_mux update when there is ACCY inserted ---
+
+	//[+++] Add for station update when screen on
+	smb5_drm_nb.notifier_call = smb5_drm_notifier;
+	msm_drm_register_client(&smb5_drm_nb);
+	//[---] Add for station update when screen on
+
+	//ASUS BSP : Reset JEITA Temp Register +++
+	asus_set_jeita_temp_thr();
 
 	pr_info("QPNP SMB5 probed successfully\n");
 
@@ -3618,8 +5484,133 @@ cleanup:
 	smblib_deinit(chg);
 	platform_set_drvdata(pdev, NULL);
 
+	//ASUS BSP Austin_T : CHG_ATTRs +++
+		sysfs_remove_group(&chg->dev->kobj, &asus_smblib_attr_group);
+	//ASUS BSP Austin_T : CHG_ATTRs ---
+
 	return rc;
 }
+
+//ASUS BSP charger : Add suspend/resume function +++
+void rerun_thermal_alert_detect_func(void)
+{
+	int rc;
+	u8 reg = 0;
+	u8 pogo_therm_mask = 0xC0;
+	u8 btm_therm_mask = 0x30;
+
+	if (!asp1690e_ready) {
+		CHG_DBG_E("%s: ADC is not ready, bypass interrupt\n", __func__);
+		return;
+	}
+
+	rc = asp1690e_read_reg(0x41, &reg);
+	rc = asp1690e_read_reg(0x42, &reg);
+	if (rc < 0) {		
+		CHG_DBG_E("%s: fail to read asp1690e ADC, rerun thermal alert detction\n", __func__);
+		rerun_thermal_alert_flag = 1;
+		return;
+	}
+
+	if (reg & pogo_therm_mask) {
+		CHG_DBG("%s: Side Thermal Alert interrupt\n", __func__);
+		schedule_delayed_work(&smbchg_dev->asus_thermal_pogo_work, 0);
+	} else if (reg & btm_therm_mask) {
+		CHG_DBG("%s: Bottom Thermal Alert interrupt\n", __func__);
+		schedule_delayed_work(&smbchg_dev->asus_thermal_btm_work, 0);
+	}
+}
+
+void asus_asp1690e_resume_setting(void)
+{
+	u8 reg = 0;
+	int rc;
+
+	if (!asp1690e_ready) {
+		CHG_DBG_E("%s: ADC is not ready, bypass interrupt\n", __func__);
+		return;
+	}
+
+	asp1690e_mask_write_reg(0x31,0xC0,0xC0);
+	asp1690e_write_reg(0x3C,0xFF);
+	asp1690e_write_reg(0x3D,0x31);
+	asp1690e_write_reg(0x3E,0xFF);
+	asp1690e_write_reg(0x3F,0x31);
+
+	rc = asp1690e_read_reg(0x41, &reg);
+	rc = asp1690e_read_reg(0x42, &reg);
+	if (rc < 0) {
+		CHG_DBG_E("%s: fail to read asp1690e ADC\n", __func__);
+	}
+}
+
+#define JEITA_MINIMUM_INTERVAL (30)
+static int smb5_resume(struct device *dev)
+{
+	struct timespec mtNow;
+	int nextJEITAinterval;
+	int rc;
+
+	if (is_asp1690e_off) {
+		rc = gpio_direction_output(global_gpio->PW_ADC_EN, 0);
+		if (rc) {
+			CHG_DBG_E("%s: Failed to enable asp1690e power when resume\n", __func__);
+		} else {
+			is_asp1690e_off = 0;
+			CHG_DBG("%s: Enable asp1690e power when resume\n", __func__);
+			asus_asp1690e_resume_setting();
+		}
+	}
+
+	if (rerun_thermal_alert_flag == 1) {
+		CHG_DBG_E("%s. There is i2c error in previous thermal alert detction\n", __func__);
+		rerun_thermal_alert_flag = 0;
+		rerun_thermal_alert_detect_func();
+	}
+
+	if (!asus_get_prop_usb_present(smbchg_dev)) {
+		return 0;
+	}
+
+	if (!asus_flow_done_flag)
+		return 0;
+
+	vote(smbchg_dev->awake_votable, ASUS_CHG_VOTER, true, 0);
+	mtNow = current_kernel_time();
+
+	/*BSP Austin_Tseng: if next JEITA time less than 30s, do JEITA
+			(next JEITA time = last JEITA time + 60s)*/
+	nextJEITAinterval = 60 - (mtNow.tv_sec - last_jeita_time.tv_sec);
+	CHG_DBG("%s: nextJEITAinterval = %d\n", __func__, nextJEITAinterval);
+	if (nextJEITAinterval <= JEITA_MINIMUM_INTERVAL) {
+		cancel_delayed_work(&smbchg_dev->asus_min_monitor_work);
+		cancel_delayed_work(&smbchg_dev->asus_cable_check_work);
+		cancel_delayed_work(&smbchg_dev->asus_batt_RTC_work);
+		schedule_delayed_work(&smbchg_dev->asus_min_monitor_work, 0);
+	} else {
+		smblib_asus_monitor_start(smbchg_dev, nextJEITAinterval * 1000);
+		vote(smbchg_dev->awake_votable, ASUS_CHG_VOTER, false, 0);
+	}
+	return 0;
+}
+
+static int smb5_suspend(struct device *dev)
+{
+	int rc;
+
+	if (!asus_get_prop_usb_present(smbchg_dev) && ASUS_POGO_ID == NO_INSERT && !usb_alert_flag) {
+		rc = gpio_direction_output(global_gpio->PW_ADC_EN, 1);
+		if (rc)
+			CHG_DBG_E("%s: Failed to disable asp1690e power when suspend\n", __func__);
+		else {
+			is_asp1690e_off = 1;
+			CHG_DBG("%s: Disable asp1690e power when no cable no alert suspend\n", __func__);
+		}
+	}
+
+	return 0;
+}
+//ASUS BSP charger : Add suspend/resume function +++
 
 static int smb5_remove(struct platform_device *pdev)
 {
@@ -3654,6 +5645,13 @@ static void smb5_shutdown(struct platform_device *pdev)
 	smblib_hvdcp_exit_config(chg);
 }
 
+//ASUS BSP +++
+static const struct dev_pm_ops smb5_pm_ops = {
+	.suspend	= smb5_suspend,
+	.resume		= smb5_resume,
+};
+//ASUS BSP ---
+
 static const struct of_device_id match_table[] = {
 	{ .compatible = "qcom,qpnp-smb5", },
 	{ },
@@ -3664,6 +5662,7 @@ static struct platform_driver smb5_driver = {
 		.name		= "qcom,qpnp-smb5",
 		.owner		= THIS_MODULE,
 		.of_match_table	= match_table,
+		.pm		= &smb5_pm_ops,	//ASUS BSP +++
 	},
 	.probe		= smb5_probe,
 	.remove		= smb5_remove,

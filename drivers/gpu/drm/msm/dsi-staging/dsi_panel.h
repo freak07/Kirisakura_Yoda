@@ -324,4 +324,14 @@ int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel);
 
 void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
 
+/* ASUS BSP Display +++ */
+int dsi_panel_asusFps(struct dsi_panel *panel, int type);
+int dsi_panel_set_osc(struct dsi_panel *panel);
+int dsi_panel_set_idle(struct dsi_panel *panel, bool enter);
+void dsi_panel_bl_delay(void);
+int dsi_panel_set_hbm(struct dsi_panel *panel, bool enable);
+int dsi_panel_set_global_hbm(struct dsi_panel *panel, bool enable);
+int dsi_panel_set_ir_drop(struct dsi_panel *panel, bool enable);
+/* ASUS BSP Display --- */
+
 #endif /* _DSI_PANEL_H_ */

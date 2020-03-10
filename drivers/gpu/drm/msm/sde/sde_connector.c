@@ -1845,6 +1845,7 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	SDE_EVT32(SDE_EVTLOG_ERROR);
 	SDE_ERROR("esd check failed report PANEL_DEAD conn_id: %d enc_id: %d\n",
 			conn->base.base.id, conn->encoder->base.id);
+	ASUSEvtlog("[Display] PANEL_DEAD\n"); /* ASUS BSP Display +++ */
 }
 
 int sde_connector_esd_status(struct drm_connector *conn)

@@ -1136,10 +1136,14 @@ static void f2fs_put_super(struct super_block *sb)
 	kvfree(sbi);
 }
 
+extern int is_suspend; // ASUS_BSP : For debug suspend sync fs
 int f2fs_sync_fs(struct super_block *sb, int sync)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 	int err = 0;
+
+	if (is_suspend)
+		printk("[SYS_SYNC] f2fs_sync_fs start, sync %d, is_suspend %d\n", sync, is_suspend);
 
 	if (unlikely(f2fs_cp_error(sbi)))
 		return 0;
@@ -1161,6 +1165,9 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 		mutex_unlock(&sbi->gc_mutex);
 	}
 	f2fs_trace_ios(NULL, 1);
+
+	if (is_suspend)
+		printk("[SYS_SYNC] f2fs_sync_fs done, err %d\n", err);
 
 	return err;
 }

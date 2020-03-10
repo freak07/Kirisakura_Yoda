@@ -236,3 +236,24 @@ int cam_ife_csid_disable_ife_force_clock_on(struct cam_hw_soc_info *soc_info,
 
 	return rc;
 }
+uint32_t cam_ife_csid_get_vote_level(struct cam_hw_soc_info *soc_info,
+	uint64_t clock_rate)
+{
+	int i = 0;
+
+	if (!clock_rate)
+		return CAM_SVS_VOTE;
+
+        //ASUS_BSP Bryant +++ Modify csid clock level.
+	for (i = 0; i < CAM_MAX_VOTE; i++) {
+		if (soc_info->clk_level_valid[i] &&
+			soc_info->clk_rate[i][soc_info->src_clk_idx] >=
+			clock_rate) {
+			CAM_DBG(CAM_ISP, "Clock rate %lld, selected clock level %d", clock_rate, i);
+			return i;
+		}
+	}
+        //ASUS_BSP Bryant --- Modify csid clock level.
+
+	return CAM_TURBO_VOTE;
+}

@@ -54,6 +54,9 @@ struct dp_link_private {
 	u8 link_status[DP_LINK_STATUS_SIZE];
 };
 
+extern bool g_hpd;
+extern bool is_in_dp_disconnect;
+
 static char *dp_link_get_audio_test_pattern(u32 pattern)
 {
 	switch (pattern) {
@@ -888,10 +891,19 @@ static void dp_link_parse_sink_status_field(struct dp_link_private *link)
 	link->prev_sink_count = link->dp_link.sink_count.count;
 	dp_link_parse_sink_count(&link->dp_link);
 
+    if (is_in_dp_disconnect && !g_hpd) {
+        pr_err("dp disconnect, stop link.\n");
+        return;
+    }
 	len = drm_dp_dpcd_read_link_status(link->aux->drm_aux,
 		link->link_status);
 	if (len < DP_LINK_STATUS_SIZE)
 		pr_err("DP link status read failed\n");
+
+    if (is_in_dp_disconnect && !g_hpd) {
+        pr_err("dp_disconnect, stop link..\n");
+        return;
+    }
 	dp_link_parse_request(link);
 }
 
@@ -1283,6 +1295,10 @@ static int dp_link_process_request(struct dp_link *dp_link)
 
 	dp_link_reset_data(link);
 
+    if (is_in_dp_disconnect && !g_hpd) {
+        pr_err("dp disconnect.\n");
+        return -EINVAL;
+    }
 	dp_link_parse_sink_status_field(link);
 
 	if (dp_link_is_test_edid_read(link)) {
