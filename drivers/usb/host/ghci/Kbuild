@@ -1,2 +1,2 @@
-obj-m := ghci-hcd.o
-obj-m += gxhci-hcd.o
+obj-y := ghci-hcd.o
+obj-y += gxhci-hcd.o

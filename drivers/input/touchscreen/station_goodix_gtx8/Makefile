@@ -4,7 +4,7 @@
 #
 # core layer
 
-obj-m += station_goodix_touch.o
+obj-y += station_goodix_touch.o
 station_goodix_touch-objs += goodix_ts_i2c.o
 station_goodix_touch-objs += goodix_ts_core.o
 station_goodix_touch-objs += goodix_cfg_bin.o
