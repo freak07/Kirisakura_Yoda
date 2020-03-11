@@ -215,7 +215,10 @@ static int coresight_enable_sink(struct coresight_device *csdev, u32 mode)
 {
 	int ret;
 
-	if (!csdev->enable) {
+	/*
+	 * We need to make sure the "new" session is compatible with the
+	 * existing "mode" of operation.
+	 */
 		if (sink_ops(csdev)->enable) {
 			coresight_enable_reg_clk(csdev);
 			ret = sink_ops(csdev)->enable(csdev, mode);
@@ -223,7 +226,6 @@ static int coresight_enable_sink(struct coresight_device *csdev, u32 mode)
 				coresight_disable_reg_clk(csdev);
 				return ret;
 			}
-		}
 		csdev->enable = true;
 	}
 
@@ -454,19 +456,7 @@ int coresight_enable_path(struct list_head *path, u32 mode)
 		 * ETF devices are tricky... They can be a link or a sink,
 		 * depending on how they are configured.  If an ETF has been
 		 * "activated" it will be configured as a sink, otherwise
-		 * go ahead with the link configuration.
-		 */
-		if (type == CORESIGHT_DEV_TYPE_LINKSINK)
-			type = (csdev == coresight_get_sink(path)) ?
-						CORESIGHT_DEV_TYPE_SINK :
-						CORESIGHT_DEV_TYPE_LINK;
-
-		switch (type) {
-		case CORESIGHT_DEV_TYPE_SINK:
-			ret = coresight_enable_sink(csdev, mode);
-			if (ret)
-				goto err;
-			break;
+		 * go ahead with
 		case CORESIGHT_DEV_TYPE_SOURCE:
 			/* sources are enabled from either sysFS or Perf */
 			break;
