@@ -182,7 +182,7 @@ static void sugov_track_cycles(struct sugov_policy *sg_policy,
 	u64 delta_ns, cycles;
 	u64 next_ws = sg_policy->last_ws + sched_ravg_window;
 
-	if (likely(!sysctl_sched_use_walt_cpu_util))
+	if (unlikely(!sysctl_sched_use_walt_cpu_util))
 		return;
 
 	upto = min(upto, next_ws);
@@ -201,7 +201,7 @@ static void sugov_calc_avg_cap(struct sugov_policy *sg_policy, u64 curr_ws,
 	u64 last_ws = sg_policy->last_ws;
 	unsigned int avg_freq;
 
-	if (likely(!sysctl_sched_use_walt_cpu_util))
+	if (unlikely(!sysctl_sched_use_walt_cpu_util))
 		return;
 
 	BUG_ON(curr_ws < last_ws);
@@ -252,7 +252,7 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 			trace_cpu_frequency(next_freq, cpu);
 		}
 	} else {
-		if (likely(use_pelt()))
+		if (use_pelt())
 			sg_policy->work_in_progress = true;
 		irq_work_queue(&sg_policy->irq_work);
 	}
@@ -402,7 +402,7 @@ static void sugov_walt_adjust(struct sugov_cpu *sg_cpu, unsigned long *util,
 	bool is_hiload;
 	unsigned long pl = sg_cpu->walt_load.pl;
 
-	if (likely(!sysctl_sched_use_walt_cpu_util))
+	if (unlikely(!sysctl_sched_use_walt_cpu_util))
 		return;
 
 	is_hiload = (cpu_util >= mult_frac(sg_policy->avg_cap,
@@ -612,7 +612,7 @@ static void sugov_work(struct kthread_work *work)
 				CPUFREQ_RELATION_L);
 	mutex_unlock(&sg_policy->work_lock);
 
-	if (likely(use_pelt()))
+	if (use_pelt())
 		sg_policy->work_in_progress = false;
 }
 
