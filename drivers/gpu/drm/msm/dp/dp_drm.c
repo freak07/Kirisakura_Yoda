@@ -445,16 +445,35 @@ static bool dp_bond_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 				  struct drm_display_mode *adjusted_mode)
 {
 	struct dp_bond_bridge *bridge;
+	struct drm_display_mode tmp;
+	struct dp_display_mode dp_mode;
+	struct dp_display *dp;
+	bool ret = true;
 
-	if (!drm_bridge) {
+	if (!drm_bridge || !mode || !adjusted_mode) {
 		pr_err("Invalid params\n");
-		return false;
+		ret = false;
+		goto end;
 	}
 
 	bridge = to_dp_bond_bridge(drm_bridge);
 
-	return drm_bridge_mode_fixup(&bridge->bridges[0]->base,
-			mode, adjusted_mode);
+	dp = bridge->display;
+
+	if (!dp->bridge->dp_panel) {
+		pr_err("Invalid dp_panel\n");
+		ret = false;
+		goto end;
+	}
+
+	tmp = *mode;
+	dp_bond_split_tile_timing(&tmp, dp->base_connector->num_h_tile);
+	dp->convert_to_dp_mode(dp, dp->bridge->dp_panel, &tmp, &dp_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	dp_bond_merge_tile_timing(adjusted_mode,
+			dp->base_connector->num_h_tile);
+end:
+	return ret;
 }
 
 static void dp_bond_bridge_pre_enable(struct drm_bridge *drm_bridge)

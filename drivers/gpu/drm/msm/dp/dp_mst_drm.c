@@ -745,18 +745,47 @@ static bool dp_mst_super_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 				  struct drm_display_mode *adjusted_mode)
 {
 	struct dp_mst_bridge *bridge;
-	struct dp_mst_private *mst;
+	struct drm_crtc_state *crtc_state;
+	struct dp_mst_bridge_state *bridge_state;
+	struct dp_display *dp;
+	struct drm_display_mode tmp;
+	struct dp_display_mode dp_mode;
+	bool ret = true;
 
-	if (!drm_bridge) {
+	DP_MST_DEBUG("enter\n");
+
+	if (!drm_bridge || !mode || !adjusted_mode) {
 		pr_err("Invalid params\n");
-		return false;
+		ret = false;
+		goto end;
 	}
 
 	bridge = to_dp_mst_bridge(drm_bridge);
-	mst = bridge->display->dp_mst_prv_info;
+	crtc_state = container_of(mode, struct drm_crtc_state, mode);
+	bridge_state = dp_mst_get_bridge_atomic_state(crtc_state->state,
+				bridge);
+	if (IS_ERR(bridge_state)) {
+		pr_err("Invalid bridge state\n");
+		ret = false;
+		goto end;
+	}
 
-	return drm_bridge_mode_fixup(&mst->mst_bridge[0].base,
-			mode, adjusted_mode);
+	if (!bridge_state->dp_panel) {
+		pr_err("Invalid dp_panel\n");
+		ret = false;
+		goto end;
+	}
+
+	dp = bridge->display;
+	tmp = *mode;
+	dp_mst_split_tile_timing(&tmp);
+	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, &tmp, &dp_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	dp_mst_merge_tile_timing(adjusted_mode);
+
+	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
+end:
+	return ret;
 }
 
 static void dp_mst_super_bridge_pre_enable(struct drm_bridge *drm_bridge)

@@ -802,6 +802,7 @@ static void dp_display_change_phy_bond_mode(struct dp_display_private *dp,
 				dp->phy_bond_mode, mode);
 
 	dp->phy_bond_mode = mode;
+	/* Propagate to dp_ctrl, dp_catalog, dp_power and dp_panel */
 	dp->ctrl->set_phy_bond_mode(dp->ctrl, mode);
 }
 
@@ -2086,6 +2087,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	/* log this as it results from user action of cable dis-connection */
 	pr_info("DP%d [OK]", dp->cell_idx);
 end:
+	/*
+	 * Once the DP driver is turned off, set to non-bond mode.
+	 * If bond mode is required afterwards, call set_phy_bond_mode.
+	 */
 	dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
 
 	dp_panel->deinit(dp_panel, flags);
@@ -2995,6 +3000,15 @@ static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
 	mutex_lock(&dp->session_lock);
 
 	if (dp->phy_bond_mode != mode) {
+		/*
+		 * The DP driver has been firstly inited in process_hpd_high.
+		 * Then the upper layer will decide the display mode after
+		 * receiving the HPD event.
+		 * If the bond mode need to be changed afterwards, tear it
+		 * down here and allow it to be re-init in dp_display_prepare,
+		 * where the master/slave order is guaranteed by the bond
+		 * bridge.
+		 */
 		dp_display_clean(dp);
 
 		dp_display_host_deinit(dp);
@@ -3171,7 +3185,7 @@ int dp_display_get_num_of_streams(void *dp_display)
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 	if (!dp->parser)
-		return DP_STREAM_MAX;
+		return dp->cell_idx ? 0 : DP_STREAM_MAX;
 
 	return (dp->parser->has_mst && !dp->parser->no_mst_encoder) ?
 			DP_STREAM_MAX : 0;

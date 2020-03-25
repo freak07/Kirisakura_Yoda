@@ -219,13 +219,13 @@ static int coresight_enable_sink(struct coresight_device *csdev, u32 mode)
 	 * We need to make sure the "new" session is compatible with the
 	 * existing "mode" of operation.
 	 */
-		if (sink_ops(csdev)->enable) {
-			coresight_enable_reg_clk(csdev);
-			ret = sink_ops(csdev)->enable(csdev, mode);
-			if (ret) {
-				coresight_disable_reg_clk(csdev);
-				return ret;
-			}
+	if (sink_ops(csdev)->enable) {
+		coresight_enable_reg_clk(csdev);
+		ret = sink_ops(csdev)->enable(csdev, mode);
+		if (ret) {
+			coresight_disable_reg_clk(csdev);
+			return ret;
+		}
 		csdev->enable = true;
 	}
 

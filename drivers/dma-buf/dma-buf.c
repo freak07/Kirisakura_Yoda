@@ -95,7 +95,7 @@ static int dma_buf_release(struct inode *inode, struct file *file)
 		reservation_object_fini(dmabuf->resv);
 
 	module_put(dmabuf->owner);
-	kfree(dmabuf->name);
+	kfree(dmabuf->buf_name);
 	if (dmabuf->from_kmem)
 		kmem_cache_free(kmem_dma_buf_pool, dmabuf);
 	else
@@ -484,7 +484,7 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 	init_waitqueue_head(&dmabuf->poll);
 	dmabuf->cb_excl.poll = dmabuf->cb_shared.poll = &dmabuf->poll;
 	dmabuf->cb_excl.active = dmabuf->cb_shared.active = 0;
-	dmabuf->name = bufname;
+	dmabuf->buf_name = bufname;
 
 	if (!resv) {
 		resv = (struct reservation_object *)&dmabuf[1];
@@ -1243,7 +1243,7 @@ static int dma_buf_debug_show(struct seq_file *s, void *unused)
 				buf_obj->size,
 				buf_obj->file->f_flags, buf_obj->file->f_mode,
 				file_count(buf_obj->file),
-				buf_obj->exp_name, buf_obj->name);
+				buf_obj->exp_name, buf_obj->buf_name);
 
 		robj = buf_obj->resv;
 		while (true) {

@@ -901,6 +901,8 @@ int dp_vco_set_rate_7nm(struct clk_hw *hw, unsigned long rate,
 {
 	struct dp_pll_vco_clk *vco;
 	struct mdss_pll_resources *dp_res;
+	struct mdss_pll_resources *dp_brother_res = NULL;
+	enum bond_mode_role bond_mode;
 	int rc;
 
 	if (!hw) {
@@ -910,6 +912,20 @@ int dp_vco_set_rate_7nm(struct clk_hw *hw, unsigned long rate,
 
 	vco = to_dp_vco_hw(hw);
 	dp_res = vco->priv;
+
+	bond_mode = get_bond_mode(dp_res);
+	if (bond_mode == BOND_MODE_SLAVE && vco->brother)
+		dp_brother_res = vco->brother->priv;
+
+	/*
+	 * Check master and slave PHY should be on the same link rate.
+	 * Giving a warning if not, but let it fallthrough. Some monitors
+	 * might be able to handle this.
+	 */
+	if (dp_brother_res && dp_brother_res->vco_cached_rate != rate) {
+		pr_warn("Bond slave clock %u != master clock %u!\n",
+				rate, dp_brother_res->vco_cached_rate);
+	}
 
 	rc = mdss_pll_resource_enable(dp_res, true);
 	if (rc) {
