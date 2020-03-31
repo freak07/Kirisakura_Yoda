@@ -3739,10 +3739,6 @@ static ssize_t ext4_direct_IO_write(struct kiocb *iocb, struct iov_iter *iter)
 		get_block_func = ext4_dio_get_block_unwritten_async;
 		dio_flags = DIO_LOCKING;
 	}
-#if defined(CONFIG_EXT4_FS_ENCRYPTION)
-	WARN_ON(IS_ENCRYPTED(inode) && S_ISREG(inode->i_mode)
-		&& !fscrypt_using_hardware_encryption(inode));
-#endif
 	ret = __blockdev_direct_IO(iocb, inode,
 				   inode->i_sb->s_bdev, iter,
 				   get_block_func,
@@ -3858,7 +3854,7 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	ssize_t ret;
 	int rw = iov_iter_rw(iter);
 
-#if defined(CONFIG_FS_ENCRYPTION)
+#ifdef CONFIG_FS_ENCRYPTION
 	if (IS_ENCRYPTED(inode) && S_ISREG(inode->i_mode)
 		&& !fscrypt_using_hardware_encryption(inode))
 		return 0;
@@ -4066,8 +4062,7 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 
 	if (!buffer_uptodate(bh)) {
 		err = -EIO;
-		decrypt = S_ISREG(inode->i_mode) &&
-			IS_ENCRYPTED(inode) &&
+		decrypt = S_ISREG(inode->i_mode) && IS_ENCRYPTED(inode) &&
 		    !fscrypt_using_hardware_encryption(inode);
 		ll_rw_block(REQ_OP_READ, (decrypt ? REQ_NOENCRYPT : 0), 1, &bh);
 		wait_on_buffer(bh);

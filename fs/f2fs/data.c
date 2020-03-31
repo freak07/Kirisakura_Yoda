@@ -1018,13 +1018,10 @@ static struct bio *f2fs_grab_read_bio(struct inode *inode, block_t blkaddr,
 		return ERR_PTR(-ENOMEM);
 	f2fs_target_device(sbi, blkaddr, bio);
 	bio->bi_end_io = f2fs_read_end_io;
-	bio_set_op_attrs(bio, REQ_OP_READ,
-			 (IS_ENCRYPTED(inode) ?
-			  REQ_NOENCRYPT :
-			  op_flag));
+	bio_set_op_attrs(bio, REQ_OP_READ, op_flag);
 
 	if (f2fs_encrypted_file(inode) &&
-		!fscrypt_using_hardware_encryption(inode))
+	    !fscrypt_using_hardware_encryption(inode))
 		post_read_steps |= 1 << STEP_DECRYPT;
 	if (f2fs_compressed_file(inode))
 		post_read_steps |= 1 << STEP_DECOMPRESS;
@@ -2069,7 +2066,7 @@ submit_and_realloc:
 	dun = PG_DUN(inode, page);
 	bio_encrypted = f2fs_may_encrypt_bio(inode, NULL);
 	if (!fscrypt_mergeable_bio(bio, dun, bio_encrypted, 0)) {
-		__submit_bio(F2FS_I_SB(inode), bio, DATA);
+		__f2fs_submit_read_bio(F2FS_I_SB(inode), bio, DATA);
 		bio = NULL;
 	}
 
