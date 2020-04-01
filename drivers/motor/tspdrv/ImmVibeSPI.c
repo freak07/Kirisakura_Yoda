@@ -439,7 +439,8 @@ static struct i2c_driver dw791x_i2c_driver = {
 		.driver = {
 			.name = "dw791x-codec",
 			.owner = THIS_MODULE,
-
+			.probe_type = PROBE_FORCE_SYNCHRONOUS,
+			
 #ifdef CONFIG_OF
 			.of_match_table = of_match_ptr(dw791x_i2c_dt_ids),
 #endif
