@@ -318,3 +318,13 @@ Date:		September 2019
 Contact:	"Hridya Valsaraju" <hridya@google.com>
 Description:	Average number of valid blocks.
 		Available when CONFIG_F2FS_STAT_FS=y.
+
+
+What:		/sys/fs/f2fs/<disk>/data_io_flag
+Date:		April 2020
+Contact:	"Jaegeuk Kim" <jaegeuk@kernel.org>
+Description:	Give a way to attach REQ_META|FUA to data writes
+		given temperature-based bits. Now the bits indicate:
+		*      REQ_META     |      REQ_FUA      |
+		*    5 |    4 |   3 |    2 |    1 |   0 |
+		* Cold | Warm | Hot | Cold | Warm | Hot |
