@@ -267,7 +267,9 @@ typedef struct {
 	ATTR_TYPE type;
 } ntfs_attr;
 
-extern int ntfs_test_inode(struct inode *vi, void *data);
+typedef int (*test_t)(struct inode *, void *);
+
+extern int ntfs_test_inode(struct inode *vi, ntfs_attr *na);
 
 extern struct inode *ntfs_iget(struct super_block *sb, unsigned long mft_no);
 extern struct inode *ntfs_attr_iget(struct inode *base_vi, ATTR_TYPE type,

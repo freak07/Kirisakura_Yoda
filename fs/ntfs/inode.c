@@ -44,7 +44,7 @@
 /**
  * ntfs_test_inode - compare two (possibly fake) inodes for equality
  * @vi:		vfs inode which to test
- * @data:		data which is being tested with
+ * @na:		ntfs attribute which is being tested with
  *
  * Compare the ntfs attribute embedded in the ntfs specific part of the vfs
  * inode @vi for equality with the ntfs attribute @na.
@@ -57,9 +57,8 @@
  * NOTE: This function runs with the inode_hash_lock spin lock held so it is not
  * allowed to sleep.
  */
-int ntfs_test_inode(struct inode *vi, void *data)
+int ntfs_test_inode(struct inode *vi, ntfs_attr *na)
 {
-	ntfs_attr *na = (ntfs_attr*)data;
 	ntfs_inode *ni;
 
 	if (vi->i_ino != na->mft_no)
@@ -87,7 +86,7 @@ int ntfs_test_inode(struct inode *vi, void *data)
 /**
  * ntfs_init_locked_inode - initialize an inode
  * @vi:		vfs inode to initialize
- * @data:		data which to initialize @vi to
+ * @na:		ntfs attribute which to initialize @vi to
  *
  * Initialize the vfs inode @vi with the values from the ntfs attribute @na in
  * order to enable ntfs_test_inode() to do its work.
@@ -102,9 +101,8 @@ int ntfs_test_inode(struct inode *vi, void *data)
  * NOTE: This function runs with the inode->i_lock spin lock held so it is not
  * allowed to sleep. (Hence the GFP_ATOMIC allocation.)
  */
-static int ntfs_init_locked_inode(struct inode *vi, void *data)
+static int ntfs_init_locked_inode(struct inode *vi, ntfs_attr *na)
 {
-	ntfs_attr *na = (ntfs_attr*)data;
 	ntfs_inode *ni = NTFS_I(vi);
 
 	vi->i_ino = na->mft_no;
@@ -147,6 +145,7 @@ static int ntfs_init_locked_inode(struct inode *vi, void *data)
 	return 0;
 }
 
+typedef int (*set_t)(struct inode *, void *);
 static int ntfs_read_locked_inode(struct inode *vi);
 static int ntfs_read_locked_attr_inode(struct inode *base_vi, struct inode *vi);
 static int ntfs_read_locked_index_inode(struct inode *base_vi,
@@ -179,8 +178,8 @@ struct inode *ntfs_iget(struct super_block *sb, unsigned long mft_no)
 	na.name = NULL;
 	na.name_len = 0;
 
-	vi = iget5_locked(sb, mft_no, ntfs_test_inode,
-			ntfs_init_locked_inode, &na);
+	vi = iget5_locked(sb, mft_no, (test_t)ntfs_test_inode,
+			(set_t)ntfs_init_locked_inode, &na);
 	if (unlikely(!vi))
 		return ERR_PTR(-ENOMEM);
 
@@ -240,8 +239,8 @@ struct inode *ntfs_attr_iget(struct inode *base_vi, ATTR_TYPE type,
 	na.name = name;
 	na.name_len = name_len;
 
-	vi = iget5_locked(base_vi->i_sb, na.mft_no, ntfs_test_inode,
-			ntfs_init_locked_inode, &na);
+	vi = iget5_locked(base_vi->i_sb, na.mft_no, (test_t)ntfs_test_inode,
+			(set_t)ntfs_init_locked_inode, &na);
 	if (unlikely(!vi))
 		return ERR_PTR(-ENOMEM);
 
@@ -295,8 +294,8 @@ struct inode *ntfs_index_iget(struct inode *base_vi, ntfschar *name,
 	na.name = name;
 	na.name_len = name_len;
 
-	vi = iget5_locked(base_vi->i_sb, na.mft_no, ntfs_test_inode,
-			ntfs_init_locked_inode, &na);
+	vi = iget5_locked(base_vi->i_sb, na.mft_no, (test_t)ntfs_test_inode,
+			(set_t)ntfs_init_locked_inode, &na);
 	if (unlikely(!vi))
 		return ERR_PTR(-ENOMEM);
 
