@@ -2708,7 +2708,7 @@ static const struct super_operations ntfs_sops = {
  *
  * NOTE: @sb->s_flags contains the mount options flags.
  */
-static int ntfs_fill_super(struct super_block *sb, void *opt, const int silent)
+static int ntfs_fill_super(struct super_block *sb, void *opt, int silent)
 {
 	ntfs_volume *vol;
 	struct buffer_head *bh;
@@ -3067,12 +3067,12 @@ static struct dentry *ntfs_mount(struct file_system_type *fs_type,
 
 static struct file_system_type ntfs_fs_type = {
 	.owner		= THIS_MODULE,
-	.name		= "ntfs",
+	.name		= "tntfs",
 	.mount		= ntfs_mount,
 	.kill_sb	= kill_block_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
-MODULE_ALIAS_FS("ntfs");
+MODULE_ALIAS_FS("tntfs");
 
 /* Stable names for the slab caches. */
 static const char ntfs_index_ctx_cache_name[] = "ntfs_index_ctx_cache";
