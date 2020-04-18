@@ -1187,7 +1187,7 @@ struct ion_device *ion_device_create(void)
 
 	idev = kzalloc(sizeof(*idev), GFP_KERNEL);
 	if (!idev)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	idev->dev.minor = MISC_DYNAMIC_MINOR;
 	idev->dev.name = "ion";
@@ -1220,11 +1220,10 @@ debugfs_done:
 	internal_dev = idev;
 	return idev;
 
-
 err_sysfs:
 	misc_deregister(&idev->dev);
 err_reg:
 	kfree(idev);
-	return ret;
+	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL(ion_device_create);

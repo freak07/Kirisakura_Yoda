@@ -456,18 +456,13 @@ void ion_page_pool_destroy(struct ion_page_pool *pool);
 struct page *ion_page_pool_alloc(struct ion_page_pool *a, bool *from_pool);
 void ion_page_pool_free(struct ion_page_pool *pool, struct page *page);
 
-#ifdef CONFIG_ION_SYSTEM_HEAP
-long ion_page_pool_nr_pages(void);
-#else
-static inline long ion_page_pool_nr_pages(void) { return 0; }
-#endif
-
 struct ion_heap *get_ion_heap(int heap_id);
 struct page *ion_page_pool_alloc_pool_only(struct ion_page_pool *a);
 void ion_page_pool_free_immediate(struct ion_page_pool *pool,
 				  struct page *page);
 int ion_page_pool_total(struct ion_page_pool *pool, bool high);
 size_t ion_system_heap_secure_page_pool_total(struct ion_heap *heap, int vmid);
+long ion_page_pool_nr_pages(void);
 
 /** ion_page_pool_shrink - shrinks the size of the memory cached in the pool
  * @pool:		the pool
