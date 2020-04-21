@@ -12108,8 +12108,8 @@ static inline bool nohz_kick_needed(struct rq *rq, bool only_update)
 	 * If energy aware is enabled, do idle load balance if runqueue has
 	 * at least 2 tasks and cpu is overutilized
 	 */
-	if (rq->nr_running >= 2 && ((!energy_aware() || 
-			cpu_overutilized(cpu) ||
+	if (((rq->nr_running >= 2 && !energy_aware()) ||
+			cpu_overutilized(cpu)) ||
 			prefer_spread_on_idle(cpu))
 		return true;
 

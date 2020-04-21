@@ -318,7 +318,6 @@ TRACE_EVENT(sched_load_balance,
 		__entry->balance_interval, __entry->active_balance,
 		__entry->prefer_spread)
 );
-);
 
 TRACE_EVENT(sched_load_balance_nohz_kick,
 
