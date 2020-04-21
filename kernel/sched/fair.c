@@ -7389,8 +7389,8 @@ static inline void adjust_cpus_for_packing(struct task_struct *p,
 		*best_idle_cpu = -1;
 }
 
-static int start_cpu(struct task_struct *p, bool boosted,
-		     struct cpumask *rtg_target)
+static int get_start_cpu(struct task_struct *p, bool boosted,
+					struct cpumask *rtg_target)
 {
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int start_cpu = -1;
@@ -7416,7 +7416,7 @@ static int start_cpu(struct task_struct *p, bool boosted,
 			&& task_fits_max(p, rd->min_cap_orig_cpu))
 		start_cpu = rd->min_cap_orig_cpu;
 	else if (rd->mid_cap_orig_cpu != -1
-				&& task_fits_max(p, rd->mid_cap_orig_cpu))
+			&& task_fits_max(p, rd->mid_cap_orig_cpu))
 		start_cpu = rd->mid_cap_orig_cpu;
 	else
 		start_cpu = rd->max_cap_orig_cpu;
@@ -7449,7 +7449,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	int best_active_cpu = -1;
 	int best_idle_cpu = -1;
 	int target_cpu = -1;
-	int cpu, i;
+	int i, start_cpu;
 	long spare_wake_cap, most_spare_wake_cap = 0;
 	int most_spare_cap_cpu = -1;
 	int prev_cpu = task_cpu(p);
@@ -7471,17 +7471,17 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 		target_capacity = 0;
 
 	/* Find start CPU based on boost value */
-	cpu = start_cpu(p, boosted, fbt_env->rtg_target);
-	if (cpu < 0)
+	start_cpu = get_start_cpu(p, boosted, fbt_env->rtg_target);
+	if (start_cpu < 0)
 		return -1;
 
 	/* Find SD for the start CPU */
-	sd = rcu_dereference(per_cpu(sd_ea, cpu));
+	sd = rcu_dereference(per_cpu(sd_ea, start_cpu));
 	if (!sd)
 		return -1;
 
 	/* fast path for prev_cpu */
-	if ((capacity_orig_of(prev_cpu) == capacity_orig_of(cpu)) &&
+	if ((capacity_orig_of(prev_cpu) == capacity_orig_of(start_cpu)) &&
 		!cpu_isolated(prev_cpu) && cpu_online(prev_cpu) &&
 		idle_cpu(prev_cpu)) {
 
@@ -7678,11 +7678,8 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * Skip processing placement further if we are visiting
 			 * cpus with lower capacity than start cpu
 			 */
-			if (capacity_orig < capacity_orig_of(cpu))
+			if (capacity_orig < capacity_orig_of(start_cpu))
 				continue;
-
-
-
 
 			/*
 			 * Case B) Non latency sensitive tasks on IDLE CPUs.
@@ -7832,7 +7829,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	 */
 
 	if (prefer_idle && (best_idle_cpu != -1)) {
-		trace_sched_find_best_target(p, prefer_idle, min_util, cpu,
+		trace_sched_find_best_target(p, prefer_idle, min_util, start_cpu,
 					     best_idle_cpu, best_active_cpu,
 					     -1, best_idle_cpu, -1);
 
@@ -7853,7 +7850,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 		!(p->state == TASK_RUNNING && !idle_cpu(most_spare_cap_cpu)))
 		target_cpu = most_spare_cap_cpu;
 
-	trace_sched_find_best_target(p, prefer_idle, min_util, cpu,
+	trace_sched_find_best_target(p, prefer_idle, min_util, start_cpu,
 				     best_idle_cpu, best_active_cpu,
 				     most_spare_cap_cpu,
 				     target_cpu,
@@ -7871,7 +7868,6 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 
 out:
 	return target_cpu;
-}
 
 /*
  * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
