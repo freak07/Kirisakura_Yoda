@@ -68,6 +68,8 @@ extern int ec_i2c_set_display_fps(char fps);
 bool panel_on;
 EXPORT_SYMBOL(panel_on);
 extern int ingore_reset;
+void sched_set_refresh_rate(void);
+
 
 enum dsi_dsc_ratio_type {
 	DSC_8BPC_8BPP,
@@ -4508,11 +4510,23 @@ int dsi_panel_asusFps(struct dsi_panel *panel, int type)
 	mutex_lock(&panel->panel_lock);
 	
 	if (type == 2)
+		{
 		cmd_type = DSI_CMD_SET_60;
+			pr_err("[WALT-Disp] set 60fps WALT RAVG_Window\n");
+		sched_set_refresh_rate();
+		}
 	else if (type == 1)
-		cmd_type = DSI_CMD_SET_90;		
+		{
+		cmd_type = DSI_CMD_SET_90;
+			pr_err("[WALT-Disp] set 90fps WALT RAVG_Window\n");
+		sched_set_refresh_rate();
+		}
 	else
+		{
 		cmd_type = DSI_CMD_SET_120;
+			pr_err("[WALT-Disp] set 120fps WALT RAVG_Window\n");
+		sched_set_refresh_rate();
+		}
 
 	rc = dsi_panel_tx_cmd_set(panel, cmd_type);
 	if (rc) {

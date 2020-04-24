@@ -3738,23 +3738,29 @@ unlock:
 	return ret;
 }
 
+extern int lastFps;
 
-void sched_set_refresh_rate(enum fps fps)
+void sched_set_refresh_rate()
 {
 	if (HZ == 250 && sysctl_sched_dynamic_ravg_window_enable) {
-		if (fps > FPS90)
-			display_sched_ravg_window_nr_ticks = 2;
-		else if (fps == FPS90)
-			display_sched_ravg_window_nr_ticks = 3;
-		else
+		if (lastFps >= 60 && lastFps < 90)
+		{
+			pr_err("[WALT] set 60fps WALT RAVG_Window\n");
 			display_sched_ravg_window_nr_ticks = 5;
-
+		}
+		else if (lastFps >= 90 && lastFps < 120)
+		{
+			pr_err("[WALT] set 90fps WALT RAVG_Window\n");
+			display_sched_ravg_window_nr_ticks = 3;
+		}
+		else if (lastFps == 120)
+		{
+			pr_err("[WALT] set 120fps WALT RAVG_Window\n");
+			display_sched_ravg_window_nr_ticks = 2;
+		}
 		sched_window_nr_ticks_change();
 	}
 }
-EXPORT_SYMBOL(sched_set_refresh_rate);
-
-
 
 /* Migration margins */
 unsigned int sysctl_sched_capacity_margin_up[MAX_MARGIN_LEVELS] = {
