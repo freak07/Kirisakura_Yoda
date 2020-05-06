@@ -4195,14 +4195,17 @@ static bool check_same_owner(struct task_struct *p)
    
     //printk("TGPA- check_same_owner %s, %s", p->comm, current->comm);
     // glory of king
-    if(!strcmp(p->comm, "UnityMain") && !strncmp("Thread-", current->comm, 7))
+    if(!strcmp(p->comm, "UnityMain") && !strncmp("Thread-", current->comm, 7)) {
         return true;
+    }
     //pubg
-    if(!strncmp(p->comm, "Thread-", 7) && !strncmp("Thread-", current->comm, 7))
+    if(!strncmp(p->comm, "Thread-", 7) && !strncmp("Thread-", current->comm, 7)) {
         return true;
+    }
     //peace elite
-    if(!strncmp(p->comm, "RenderThread", strlen("RenderThread")) && !strncmp("Thread-", current->comm, 7))
+    if(!strncmp(p->comm, "RenderThread", strlen("RenderThread")) && !strncmp("Thread-", current->comm, 7)) {
         return true;
+    }
     
     
 	rcu_read_lock();
