@@ -2849,11 +2849,8 @@ static long ipa3_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case IPA_IOC_GET_PHERIPHERAL_EP_INFO:
 		IPADBG("Got IPA_IOC_GET_EP_INFO\n");
-		if (ipa3_ctx->ipa_config_is_auto == false) {
-			IPADBG("not an auto config: returning error\n");
-			retval = -ENOTTY;
-			break;
-		}
+		if (ipa3_ctx->ipa_config_is_auto == false)
+			return -ENOTTY;
 		if (copy_from_user(&ep_info, (const void __user *)arg,
 			sizeof(struct ipa_ioc_get_ep_info))) {
 			IPAERR_RL("copy_from_user fails\n");
