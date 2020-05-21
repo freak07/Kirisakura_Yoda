@@ -176,11 +176,6 @@
 	(IPA_MAX_FLT_RT_CNT_INDEX - IPA_FLT_RT_HW_COUNTER)
 #define IPA_MAX_FLT_RT_CLIENTS 60
 
-/**
- * New feature flag for CV2X config.
- */
-
-#define IPA_CV2X_SUPPORT
 
 /**
  * the attributes of the rule (routing or filtering)
@@ -390,21 +385,12 @@ enum ipa_client_type {
 
 	IPA_CLIENT_MHI_PRIME_TETH_PROD		= 98,
 	IPA_CLIENT_MHI_PRIME_TETH_CONS		= 99,
-
 	IPA_CLIENT_MHI_PRIME_RMNET_PROD		= 100,
 	IPA_CLIENT_MHI_PRIME_RMNET_CONS		= 101,
-
 	IPA_CLIENT_MHI_PRIME_DPL_PROD		= 102,
-	/* RESERVERD CONS					= 103, */
-
-	IPA_CLIENT_MHI2_PROD	= 104,
-	IPA_CLIENT_MHI2_CONS	= 105,
-
-	IPA_CLIENT_Q6_CV2X_PROD	= 106,
-	IPA_CLIENT_Q6_CV2X_CONS	= 107,
 };
 
-#define IPA_CLIENT_MAX (IPA_CLIENT_Q6_CV2X_CONS + 1)
+#define IPA_CLIENT_MAX (IPA_CLIENT_MHI_PRIME_DPL_PROD + 1)
 
 #define IPA_CLIENT_WLAN2_PROD IPA_CLIENT_A5_WLAN_AMPDU_PROD
 #define IPA_CLIENT_Q6_DL_NLO_DATA_PROD IPA_CLIENT_Q6_DL_NLO_DATA_PROD
@@ -466,7 +452,6 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_UL_NLO_DATA_CONS || \
 	(client) == IPA_CLIENT_Q6_UL_NLO_ACK_CONS || \
 	(client) == IPA_CLIENT_Q6_QBAP_STATUS_CONS || \
-	(client) == IPA_CLIENT_Q6_CV2X_CONS || \
 	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS)
 
 #define IPA_CLIENT_IS_Q6_PROD(client) \
@@ -476,7 +461,6 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_DECOMP_PROD || \
 	(client) == IPA_CLIENT_Q6_DECOMP2_PROD || \
 	(client) == IPA_CLIENT_Q6_DL_NLO_DATA_PROD || \
-	(client) == IPA_CLIENT_Q6_CV2X_PROD || \
 	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD)
 
 #define IPA_CLIENT_IS_Q6_NON_ZIP_CONS(client) \
@@ -487,7 +471,6 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_UL_NLO_DATA_CONS || \
 	(client) == IPA_CLIENT_Q6_UL_NLO_ACK_CONS || \
 	(client) == IPA_CLIENT_Q6_QBAP_STATUS_CONS || \
-	(client) == IPA_CLIENT_Q6_CV2X_CONS || \
 	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_CONS)
 
 #define IPA_CLIENT_IS_Q6_ZIP_CONS(client) \
@@ -499,7 +482,6 @@ enum ipa_client_type {
 	(client) == IPA_CLIENT_Q6_WAN_PROD || \
 	(client) == IPA_CLIENT_Q6_CMD_PROD || \
 	(client) == IPA_CLIENT_Q6_DL_NLO_DATA_PROD || \
-	(client) == IPA_CLIENT_Q6_CV2X_PROD || \
 	(client) == IPA_CLIENT_Q6_AUDIO_DMA_MHI_PROD)
 
 #define IPA_CLIENT_IS_Q6_ZIP_PROD(client) \
