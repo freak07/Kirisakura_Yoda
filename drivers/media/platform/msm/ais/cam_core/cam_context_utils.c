@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -493,7 +493,6 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 
 				cam_context_putref(ctx);
 				goto put_ref;
-
 			}
 			CAM_DBG(CAM_CTXT, "register in fence cb: %d ret = %d",
 				req->in_map_entries[j].sync_id, rc);
@@ -505,7 +504,6 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 			ctx->dev_name, ctx->ctx_id);
 
 	return rc;
-
 put_ref:
 	for (--i; i >= 0; i--) {
 		if (cam_sync_put_obj_ref(req->out_map_entries[i].sync_id))
