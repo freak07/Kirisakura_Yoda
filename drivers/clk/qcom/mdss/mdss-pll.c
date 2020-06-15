@@ -146,11 +146,6 @@ static int mdss_pll_resource_parse(struct platform_device *pdev,
 		pll_res->pll_interface_type = MDSS_HDMI_PLL_28LPM;
 	else if (!strcmp(compatible_stream, "qcom,mdss_edp_pll_7nm"))
 		pll_res->pll_interface_type = MDSS_EDP_PLL_7NM;
-	else if (!strcmp(compatible_stream, "qcom,mdss_dsi_pll_sdm660")) {
-		pll_res->pll_interface_type = MDSS_DSI_PLL_14NM;
-		pll_res->target_id = MDSS_PLL_TARGET_SDM660;
-		pll_res->revision = 2;
-	}
 	else
 		goto err;
 
@@ -471,7 +466,6 @@ static const struct of_device_id mdss_pll_dt_match[] = {
 	{.compatible = "qcom,mdss_dp_pll_14nm"},
 	{.compatible = "qcom,mdss_hdmi_pll_28lpm"},
 	{.compatible = "qcom,mdss_edp_pll_7nm"},
-	{.compatible = "qcom,mdss_dsi_pll_sdm660"},
 	{}
 };
 
