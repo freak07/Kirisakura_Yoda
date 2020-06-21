@@ -47,6 +47,7 @@
 		qcom,mdss-dsi-te-dcs-command = <1>;
 		qcom,mdss-dsi-te-check-enable;
 		qcom,mdss-dsi-te-using-te-pin;
+		qcom,mdss-dsi-bl-min-level = <0x1>;
 		
 		qcom,dsi-supported-dfps-list = <120 90 60>;
 		qcom,mdss-dsi-pan-enable-dynamic-fps;

@@ -252,6 +252,11 @@ void dsi_rect_intersect(const struct dsi_rect *r1,
 
 extern int ec_i2c_pd_set_diplay_bl(char* brightness); // BSP SZ +++ Lydia_Wu add for Station DP
 
+static bool bl_dimmer = true;
+module_param(bl_dimmer, bool, 0644);
+static int bl_min = 3;
+module_param(bl_min, int, 0644);
+
 int dsi_display_set_backlight(struct drm_connector *connector,
 		void *display, u32 bl_lvl)
 {
@@ -281,8 +286,22 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	bl_scale_ad = panel->bl_config.bl_scale_ad;
 	bl_temp = (u32)bl_temp * bl_scale_ad / MAX_AD_BL_SCALE_LEVEL;
 
-	pr_debug("bl_scale = %u, bl_scale_ad = %u, bl_lvl = %u\n",
+	if ((bl_dimmer == true) && (bl_temp == 48))
+		{
+		bl_temp = 40;
+		}
+	if ((bl_dimmer == true) && (bl_temp == 32))
+		{
+		bl_temp = 20;
+		}
+	if ((bl_dimmer == true) && (bl_temp == 16))
+		{
+		bl_temp = bl_min;
+		}
+	pr_err("bl_scale = %u, bl_scale_ad = %u, bl_lvl = %u\n",
 		bl_scale, bl_scale_ad, (u32)bl_temp);
+
+
 
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_ON);
@@ -5702,20 +5721,20 @@ static ssize_t alpm_mode_write(struct file *filp, const char *buff, size_t len, 
 		set_panel_aod_bl();
 	} else if (strncmp(messages, "2", 1) == 0) { //off to 5nits
 		g_alpm_mode = 2;
-		g_alpm_bl = 16;
+		g_alpm_bl = 1;
 	} else if (strncmp(messages, "3", 1) == 0) { //5nits to 40nits
 		g_alpm_mode = 3;
 		set_panel_aod_bl();
 	} else if (strncmp(messages, "4", 1) == 0) { //40nits to 5nits
 		g_alpm_mode = 4;
-		g_alpm_bl = 16;
+		g_alpm_bl = 1;
 	} else {
 		pr_err("[Display] don't match any alpm mode.(%s)\n", messages);
 	}
 	
 	if (g_alpm_mode != 0)
 		dsi_panel_set_backlight(g_display->panel, g_alpm_bl);
-	pr_err("[Display] alpm mode = %d, bl=%d\n", g_alpm_mode, g_alpm_bl);
+	pr_debug("[Display] alpm mode = %d, bl=%d\n", g_alpm_mode, g_alpm_bl);
 	
 	return len;
 }
@@ -5731,7 +5750,7 @@ static ssize_t alpm_mode_read(struct file *file, char __user *buf,
 	if (!buff)
 		return -ENOMEM;
 	
-	pr_err("[Display] alpm mode: %d\n", g_alpm_mode);
+	pr_debug("[Display] alpm mode: %d\n", g_alpm_mode);
 	
 	len += sprintf(buff, "%d\n", g_alpm_mode);
 	ret = simple_read_from_buffer(buf, count, ppos, buff, len);
@@ -5783,7 +5802,7 @@ static void set_dim_mode(int mode, int type)
 							  0x88, 0x19};
 	
 	g_dim_mode = mode;
-	pr_err("[Display] dim (%d)\n", mode);
+	pr_debug("[Display] dim (%d)\n", mode);
 	
 	if (mode == 0) {
 		if (lastFps >= 60 && lastFps < 90)
