@@ -227,7 +227,7 @@ source "drivers/sensors/Kconfig"
 
 source "drivers/esoc/Kconfig"
 
-source "techpack/data/drivers/Kconfig"
+source "techpack/data/Kconfig"
 
 config TEXURA_USERDEBUG
 	bool "Texura userdebug module for ASUS ZS660KL"

@@ -4,6 +4,6 @@ menu "Qualcomm RmNet extensions"
 
 #source "techpack/data/drivers/generic-sw-bridge/Kconfig"
 
-source "techpack/data/drivers/rmnet/Kconfig"
+source "techpack/data/rmnet/Kconfig"
 
 endmenu
