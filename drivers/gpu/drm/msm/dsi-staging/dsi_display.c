@@ -6033,7 +6033,7 @@ void set_panel_global_hbm(bool enable)
 	dsi_panel_set_global_hbm(g_display->panel, enable);
 }
 
-void set_panel_in_recovery()
+void set_panel_in_recovery(void)
 {
 	queue_delayed_work(display_recovery_workqueue, &display_recovery_work, msecs_to_jiffies(50));
 }
