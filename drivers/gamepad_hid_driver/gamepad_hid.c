@@ -16,14 +16,14 @@
 #include "gamepad_hid.h"
 #define RGB_MAX 21   //for rainbow color setting
 
-int mode2_state=0;
-int apply_state=0;
+static int mode2_state=0;
+static int apply_state=0;
 
 struct gamepad_drvdata {
 	struct led_classdev led;
 };
 
-struct hidraw *gamepad_hidraw;
+static struct hidraw *gamepad_hidraw;
 
 static u32 g_red;
 static u32 g_green;
@@ -35,7 +35,7 @@ static u32 g_led_on;
 extern int asus_usbhid_set_raw_report(struct hid_device *hid, unsigned int reportnum,
 				 __u8 *buf, size_t count, unsigned char rtype);
 
-int asus_usb_hid_write(u8 vlaues,char asus_gp_command_id)
+static int asus_usb_hid_write(u8 vlaues,char asus_gp_command_id)
 {
 	struct hid_device *hdev;
 	unsigned char report_type;
@@ -75,12 +75,14 @@ int asus_usb_hid_write(u8 vlaues,char asus_gp_command_id)
 	ret = asus_usbhid_set_raw_report(hdev,report_number,buffer,len,report_type);
 
 	hid_hw_power(hdev, PM_HINT_NORMAL);
-	
+
+	kfree(buffer);
+
 	return ret;
 
 }
 
-int asus_usb_hid_read(u8 *data,char asus_gp_command_id)
+static int asus_usb_hid_read(u8 *data,char asus_gp_command_id)
 {
 	int ret = 0;
 	struct hid_device *hdev;
@@ -122,7 +124,9 @@ int asus_usb_hid_read(u8 *data,char asus_gp_command_id)
 	//printk("[GAMEPAD_HID] asus_usb_hid_read : %d\n", (*data));
 
 	hid_hw_power(hdev, PM_HINT_NORMAL);
-	
+
+	kfree(buffer);
+
 	return ret;
 }
 
