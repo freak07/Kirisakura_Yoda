@@ -286,15 +286,15 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	bl_scale_ad = panel->bl_config.bl_scale_ad;
 	bl_temp = (u32)bl_temp * bl_scale_ad / MAX_AD_BL_SCALE_LEVEL;
 
-	if ((bl_dimmer == true) && (bl_temp == 48))
+	if ((bl_dimmer == true) && (bl_temp == 96))
 		{
-		bl_temp = 40;
+		bl_temp = 82;
 		}
-	if ((bl_dimmer == true) && (bl_temp == 32))
+	if ((bl_dimmer == true) && (bl_temp == 80))
 		{
-		bl_temp = 20;
+		bl_temp = 66;
 		}
-	if ((bl_dimmer == true) && (bl_temp == 16))
+	if ((bl_dimmer == true) && (bl_temp == 64))
 		{
 		bl_temp = bl_min;
 		}
