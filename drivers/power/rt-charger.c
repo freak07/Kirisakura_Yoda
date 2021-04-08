@@ -708,9 +708,14 @@ static int isKeep5v(int vid, int pid){
 	 * White List        pid   vid
 	 * host controller : 7531  2     (0x1d6b 0x0002)
 	 * host controller : 7531  3     (0x1d6b 0x0003)
-	 * Gamepad         : 2821  30976 (0x0b05 0x7900)
+	 * Kunai bumper    : 2821  30976 (0x0b05 0x7900)
+	 * Kunai holder    : 2821  30977 (0x0b05 0x7901)
+	 * Kunai 3 bumper  : 2821  30980 (0x0b05 0x7904)
+	 * Kunai 3 holder  : 2821  30981 (0x0b05 0x7905)
 	 */
-	if ((vid == 2821 && pid == 30976) || (vid == 7531 && pid == 2) || (vid == 7531 && pid == 3))
+	if ((vid == 2821 && pid == 30980) || (vid == 2821 && pid == 30981) ||
+	(vid == 2821 && pid == 30976) || (vid == 2821 && pid == 30977) ||
+	(vid == 7531 && pid == 2) || (vid == 7531 && pid == 3))
 		return 1;
 	else
 		return 0;
