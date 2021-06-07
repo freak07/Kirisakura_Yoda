@@ -852,6 +852,7 @@ int __init audio_cal_init(void)
 	activeinputpid_uevent_init(); //Rice
 	aw_channel_count_uevent_init();//Austin+++
 
+	cal_utils_init();
 	memset(&audio_cal, 0, sizeof(audio_cal));
 	mutex_init(&audio_cal.common_lock);
 	for (; i < MAX_CAL_TYPES; i++) {
