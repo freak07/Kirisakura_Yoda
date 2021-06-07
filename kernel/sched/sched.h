@@ -487,6 +487,8 @@ struct cfs_bandwidth { };
 struct cfs_rq {
 	struct load_weight load;
 	unsigned int nr_running, h_nr_running;
+	/* h_nr_running for SCHED_IDLE tasks */
+	unsigned int		idle_h_nr_running;
 
 	u64 exec_clock;
 	u64 min_vruntime;
@@ -1622,6 +1624,7 @@ extern const u32 sched_prio_to_wmult[40];
 #define DEQUEUE_SAVE		0x02 /* matches ENQUEUE_RESTORE */
 #define DEQUEUE_MOVE		0x04 /* matches ENQUEUE_MOVE */
 #define DEQUEUE_NOCLOCK		0x08 /* matches ENQUEUE_NOCLOCK */
+#define DEQUEUE_IDLE		0x80 /* The last dequeue before IDLE */
 
 #define ENQUEUE_WAKEUP		0x01
 #define ENQUEUE_RESTORE		0x02
@@ -2608,7 +2611,8 @@ static inline bool task_rtg_high_prio(struct task_struct *p)
 
 static inline bool walt_low_latency_task(struct task_struct *p)
 {
-	return sysctl_walt_low_latency_task_boost && p->low_latency;
+	return p->low_latency &&
+		(task_util(p) < sysctl_walt_low_latency_task_threshold);
 }
 
 /* Is frequency of two cpus synchronized with each other? */

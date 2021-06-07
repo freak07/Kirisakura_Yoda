@@ -25,6 +25,11 @@
 #include <linux/ipv6.h>
 #include <linux/alarmtimer.h>
 
+#if IS_ENABLED(CONFIG_IPV6)
+#include <linux/icmpv6.h>
+#endif
+
+
 #define NLMSG_FLOW_ACTIVATE 1
 #define NLMSG_FLOW_DEACTIVATE 2
 #define NLMSG_CLIENT_SETUP 4
