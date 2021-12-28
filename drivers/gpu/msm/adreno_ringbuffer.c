@@ -929,7 +929,7 @@ static inline int _get_alwayson_counter(struct adreno_device *adreno_dev,
 
 	return (unsigned int)(p - cmds);
 }
-
+ 
 /* This is the maximum possible size for 64 bit targets */
 #define PROFILE_IB_DWORDS 4
 #define PROFILE_IB_SLOTS (PAGE_SIZE / (PROFILE_IB_DWORDS << 2))

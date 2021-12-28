@@ -21,6 +21,7 @@
 #include <linux/list_lru.h>
 #include <trace/events/writeback.h>
 #include "internal.h"
+#include <linux/delay.h>  /* case 05430730: for debug */ /* SWAS4-1407 */
 
 /*
  * Inode locking rules:
@@ -1536,9 +1537,28 @@ static void iput_final(struct inode *inode)
  */
 void iput(struct inode *inode)
 {
+	int retry = 4;  /* case 05430730: for debug */ /* SWAS4-1407 */
+
 	if (!inode)
 		return;
+
+#if (0)
 	BUG_ON(inode->i_state & I_CLEAR);
+#else
+	/* case 05430730: for debug */ /* SWAS4-1407 */
+	while (retry > 0)
+	{
+		if (inode->i_state & I_CLEAR)
+		{
+			msleep(50);
+			retry--;
+			if (retry == 0) WARN_ON(inode->i_state & I_CLEAR);
+		}
+		else
+			break;
+	}
+#endif
+
 retry:
 	if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock)) {
 		if (inode->i_nlink && (inode->i_state & I_DIRTY_TIME)) {

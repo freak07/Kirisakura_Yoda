@@ -27,6 +27,7 @@
 #define WIL_MAX_ROC_DURATION_MS 5000
 #define WIL_BRD_SUFFIX_CN "CN"
 #define WIL_BRD_SUFFIX_FCC "FCC"
+#define WIL_BRD_SUFFIX_CA "CA"
 
 bool disable_ap_sme;
 module_param(disable_ap_sme, bool, 0444);
@@ -95,6 +96,7 @@ static struct wil_regd_2_brd_suffix wil_regd_2_brd_suffix_map[] = {
 	{"PY", WIL_BRD_SUFFIX_FCC},
 	{"TT", WIL_BRD_SUFFIX_FCC},
 	{"US", WIL_BRD_SUFFIX_FCC},
+        {"CA", WIL_BRD_SUFFIX_CA}
 };
 
 enum wil_nl_60g_cmd_type {

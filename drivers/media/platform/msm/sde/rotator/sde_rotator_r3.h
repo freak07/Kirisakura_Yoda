@@ -16,7 +16,7 @@
 #include "sde_rotator_core.h"
 
 /* Maximum allowed Rotator clock value */
-#define ROT_R3_MAX_ROT_CLK			345000000
+#define ROT_R3_MAX_ROT_CLK			460000000
 
 int sde_rotator_r3_init(struct sde_rot_mgr *mgr);
 

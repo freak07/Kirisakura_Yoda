@@ -24,13 +24,72 @@
 #include "thermal_core.h"
 
 /* sys I/F for thermal zone */
-
 static ssize_t
 type_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	return sprintf(buf, "%s\n", tz->type);
+}
+
+
+extern long G_pa_therm2_temp;
+extern long G_skin_therm_temp;
+extern long G_skin_msm_therm_temp;
+extern long G_virtual_therm_temp;
+extern long G_virtual_therm_temp_prev;
+extern long G_wp_therm_temp;
+extern long G_conn_therm_temp;
+bool G_use_backup_therm_flag = false;
+
+extern enum DEVICE_HWID g_ASUS_hwID;
+
+static int smooth_virtual_therm_temp(int temp){
+	int cur_shift_temp = 200;
+	/* G_virtual_therm_temp will be 0 by default (1st) */
+	if(G_virtual_therm_temp == 0){
+		return temp;
+	}
+	if((temp - G_virtual_therm_temp_prev) >= cur_shift_temp){
+		return G_virtual_therm_temp_prev + cur_shift_temp;
+	}else if ((temp - G_virtual_therm_temp_prev) <= -cur_shift_temp){
+		return G_virtual_therm_temp_prev - cur_shift_temp;
+	} else {
+		return temp;
+	}
+	return temp;
+}
+
+static int get_virtual_temp(void){
+	long virtual_therm1, virtual_therm2, result;
+	static long exchanged_delta = 1500;
+	bool cur_use_backup_therm_status = 0;
+	
+  	cur_use_backup_therm_status = G_use_backup_therm_flag;
+	virtual_therm1 = G_skin_therm_temp - 3500;
+	virtual_therm2 = G_pa_therm2_temp + 3000;
+	if(g_ASUS_hwID != ZS660KL_PR2){
+		if((virtual_therm1 - virtual_therm2) > exchanged_delta){
+			result = virtual_therm2;
+			G_use_backup_therm_flag = true;
+		}else{
+			result = virtual_therm1;
+			G_use_backup_therm_flag = false;
+		}
+	}else //use wp-therm and skin-msm-therm to estimate skin-therm when hw is ww-pr2	
+		return (((G_skin_msm_therm_temp - 30000)*6/10 + 28000 + (G_wp_therm_temp - 38000)/6) - 2000);
+	
+	if(cur_use_backup_therm_status != G_use_backup_therm_flag){
+		if(G_use_backup_therm_flag){
+			ASUSEvtlog("[THM] Change to monitor pa-therm2. pa=%d, skin=%d, result = %d\n", G_pa_therm2_temp, G_skin_therm_temp, result);
+		}else{
+			ASUSEvtlog("[THM] Change to monitor skin-therm. pa=%d, skin=%d, result = %d\n", G_pa_therm2_temp, G_skin_therm_temp, result);
+		}
+	}else{
+		/* Do nothing */
+	}
+	
+	return result;
 }
 
 static ssize_t
@@ -43,8 +102,15 @@ temp_show(struct device *dev, struct device_attribute *attr, char *buf)
 
 	if (ret)
 		return ret;
-
-	return sprintf(buf, "%d\n", temperature);
+	
+	if(tz->id == 79){
+		G_virtual_therm_temp_prev = G_virtual_therm_temp;
+		temperature = get_virtual_temp();
+		G_virtual_therm_temp = smooth_virtual_therm_temp(temperature);
+		return sprintf(buf, "%d\n", G_virtual_therm_temp);
+	}else{
+		return sprintf(buf, "%d\n", temperature);
+	}
 }
 
 static ssize_t

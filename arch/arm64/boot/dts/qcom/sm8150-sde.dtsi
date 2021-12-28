@@ -38,7 +38,6 @@
 					460000000>;
 
 		sde-vdd-supply = <&mdss_core_gdsc>;
-		mmcx-supply = <&VDD_MMCX_LEVEL>;
 
 		/* interrupt config */
 		interrupts = <0 83 0>;
@@ -254,7 +253,7 @@
 
 			qcom,platform-supply-entry@0 {
 				reg = <0>;
-				qcom,supply-name = "mmcx";
+				qcom,supply-name = "sde-vdd";
 				qcom,supply-min-voltage = <0>;
 				qcom,supply-max-voltage = <0>;
 				qcom,supply-enable-load = <0>;
@@ -297,6 +296,7 @@
 			<0xaf30000 0x3fd4>;
 		reg-names = "drv", "wrapper";
 		qcom,sde-rsc-version = <2>;
+		status = "disabled";
 
 		vdd-supply = <&mdss_core_gdsc>;
 		clocks = <&clock_dispcc DISP_CC_MDSS_RSCC_VSYNC_CLK>,
@@ -520,6 +520,7 @@
 		reg = <0xae94400 0x760>;
 		reg-names = "dsi_phy";
 		vdda-0p9-supply = <&pm8150_l5>;
+		gdsc-supply = <&mdss_core_gdsc>;
 		qcom,platform-strength-ctrl = [55 03
 						55 03
 						55 03
@@ -552,6 +553,7 @@
 		reg = <0xae96400 0x760>;
 		reg-names = "dsi_phy";
 		vdda-0p9-supply = <&pm8150_l5>;
+		gdsc-supply = <&mdss_core_gdsc>;
 		qcom,platform-strength-ctrl = [55 03
 						55 03
 						55 03

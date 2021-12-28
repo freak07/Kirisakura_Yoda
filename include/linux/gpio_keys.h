@@ -44,7 +44,7 @@ struct gpio_keys_button {
  * @name:		input device name
  */
 struct gpio_keys_platform_data {
-	const struct gpio_keys_button *buttons;
+	struct gpio_keys_button *buttons;
 	int nbuttons;
 	unsigned int poll_interval;
 	unsigned int rep:1;

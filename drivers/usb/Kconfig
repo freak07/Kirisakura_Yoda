@@ -174,6 +174,8 @@ source "drivers/usb/typec/Kconfig"
 
 source "drivers/usb/pd/Kconfig"
 
+source "drivers/usb/pd_rt1715/Kconfig"
+
 config USB_LED_TRIG
 	bool "USB LED Triggers"
 	depends on LEDS_CLASS && LEDS_TRIGGERS

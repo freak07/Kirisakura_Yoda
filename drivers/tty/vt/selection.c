@@ -304,7 +304,6 @@ static int __set_selection(const struct tiocl_selection __user *sel, struct tty_
 	bp = kmalloc(((sel_end-sel_start)/2+1)*multiplier, GFP_KERNEL);
 	if (!bp) {
 		printk(KERN_WARNING "selection: kmalloc() failed\n");
-		clear_selection();
 		return -ENOMEM;
 	}
 	kfree(sel_buffer);

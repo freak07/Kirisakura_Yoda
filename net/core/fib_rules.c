@@ -225,7 +225,6 @@ static int fib_rule_match(struct fib_rule *rule, struct fib_rules_ops *ops,
 			  struct fib_lookup_arg *arg)
 {
 	int ret = 0;
-
 	if (rule->iifindex && (rule->iifindex != fl->flowi_iif))
 		goto out;
 
@@ -254,10 +253,8 @@ int fib_rules_lookup(struct fib_rules_ops *ops, struct flowi *fl,
 		     int flags, struct fib_lookup_arg *arg)
 {
 	struct fib_rule *rule;
-	int err;
-
+	int err = 0;
 	rcu_read_lock();
-
 	list_for_each_entry_rcu(rule, &ops->rules_list, list) {
 jumped:
 		if (!fib_rule_match(rule, ops, fl, flags, arg))
@@ -277,7 +274,6 @@ jumped:
 			continue;
 		else
 			err = ops->action(rule, fl, flags, arg);
-
 		if (!err && ops->suppress && ops->suppress(rule, arg))
 			continue;
 
@@ -285,16 +281,17 @@ jumped:
 			if ((arg->flags & FIB_LOOKUP_NOREF) ||
 			    likely(refcount_inc_not_zero(&rule->refcnt))) {
 				arg->rule = rule;
+				//ASUS_BSP+++ trace matching routing rule
+				pr_debug("[%s] Find matching rule %d, lookup table %d, err=%d", __func__, arg->rule->pref, arg->rule->table, err);
+				//ASUS_BSP---
 				goto out;
 			}
 			break;
 		}
 	}
-
 	err = -ESRCH;
 out:
 	rcu_read_unlock();
-
 	return err;
 }
 EXPORT_SYMBOL_GPL(fib_rules_lookup);

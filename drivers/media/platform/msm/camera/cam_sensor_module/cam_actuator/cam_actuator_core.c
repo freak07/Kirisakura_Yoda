@@ -18,11 +18,13 @@
 #include "cam_res_mgr_api.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
-
+#include "asus_actuator.h"
+static int cam_actuator_log_count =0;//ASUS_BSP actuator log 10 count 
 int32_t cam_actuator_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
 {
 	int rc = 0;
+	cam_actuator_log_count=10;	//ASUS_BSP actuator log 10 count 
 
 	power_info->power_setting_size = 1;
 	power_info->power_setting =
@@ -63,6 +65,7 @@ free_power_settings:
 static int32_t cam_actuator_power_up(struct cam_actuator_ctrl_t *a_ctrl)
 {
 	int rc = 0;
+#if 0
 	struct cam_hw_soc_info  *soc_info =
 		&a_ctrl->soc_info;
 	struct cam_actuator_soc_private  *soc_private;
@@ -115,6 +118,7 @@ static int32_t cam_actuator_power_up(struct cam_actuator_ctrl_t *a_ctrl)
 		return rc;
 	}
 
+#endif
 	rc = camera_io_init(&a_ctrl->io_master_info);
 	if (rc < 0)
 		CAM_ERR(CAM_ACTUATOR, "cci init failed: rc: %d", rc);
@@ -125,6 +129,7 @@ static int32_t cam_actuator_power_up(struct cam_actuator_ctrl_t *a_ctrl)
 static int32_t cam_actuator_power_down(struct cam_actuator_ctrl_t *a_ctrl)
 {
 	int32_t rc = 0;
+#if 0
 	struct cam_sensor_power_ctrl_t *power_info;
 	struct cam_hw_soc_info *soc_info = &a_ctrl->soc_info;
 	struct cam_actuator_soc_private  *soc_private;
@@ -148,11 +153,46 @@ static int32_t cam_actuator_power_down(struct cam_actuator_ctrl_t *a_ctrl)
 		CAM_ERR(CAM_ACTUATOR, "power down the core is failed:%d", rc);
 		return rc;
 	}
-
+#endif
 	camera_io_release(&a_ctrl->io_master_info);
 
 	return rc;
 }
+//ASUS_BSP Zhengwei +++ "porting actuator"
+static void override_i2c_write_setting(struct camera_io_master *io_master_info, struct cam_sensor_i2c_reg_setting * setting, const char * op_string)
+{
+	int i;
+	int32_t dac;
+	//struct cam_actuator_ctrl_t *a_ctrl = container_of(io_master_info,struct cam_actuator_ctrl_t,io_master_info);
+	for(i=0;i<setting->size;i++)
+	{
+		if(cam_actuator_log_count==10){ //ASUS_BSP actuator log 10 count 
+			CAM_INFO(CAM_ACTUATOR,"OP %s, [%d/%d], addr[0x%x] = 0x%x",
+					op_string,
+					i+1,setting->size,
+					setting->reg_setting[i].reg_addr,
+					setting->reg_setting[i].reg_data
+				);
+		}	
+		if(setting->reg_setting[i].reg_addr == 0x84)
+		{
+			setting->reg_setting[i].reg_data = setting->reg_setting[i].reg_data & 0x0FFF;
+			if(setting->reg_setting[i].reg_data == 0x0)
+				setting->reg_setting[i].reg_data = 0x1;
+			dac = setting->reg_setting[i].reg_data;
+			//a_ctrl->lens_pos = dac;
+			if(cam_actuator_log_count==10){ //ASUS_BSP actuator log 10 count 
+				CAM_INFO(CAM_ACTUATOR,"DAC 0x%x, lens_pos %d",
+					 setting->reg_setting[i].reg_data,
+					 dac
+					 );
+				cam_actuator_log_count=0; //ASUS_BSP actuator log 10 count 
+			}
+			else cam_actuator_log_count++; //ASUS_BSP actuator log 10 count 
+		}
+	}
+}
+//ASUS_BSP Zhengwei --- "porting actuator"
 
 static int32_t cam_actuator_i2c_modes_util(
 	struct camera_io_master *io_master_info,
@@ -162,6 +202,7 @@ static int32_t cam_actuator_i2c_modes_util(
 	uint32_t i, size;
 
 	if (i2c_list->op_code == CAM_SENSOR_I2C_WRITE_RANDOM) {
+		override_i2c_write_setting(io_master_info,&(i2c_list->i2c_settings),"WRITE_RANDOM");
 		rc = camera_io_dev_write(io_master_info,
 			&(i2c_list->i2c_settings));
 		if (rc < 0) {
@@ -171,6 +212,7 @@ static int32_t cam_actuator_i2c_modes_util(
 			return rc;
 		}
 	} else if (i2c_list->op_code == CAM_SENSOR_I2C_WRITE_SEQ) {
+		override_i2c_write_setting(io_master_info,&(i2c_list->i2c_settings),"WRITE_SEQ");
 		rc = camera_io_dev_write_continuous(
 			io_master_info,
 			&(i2c_list->i2c_settings),
@@ -182,6 +224,7 @@ static int32_t cam_actuator_i2c_modes_util(
 			return rc;
 			}
 	} else if (i2c_list->op_code == CAM_SENSOR_I2C_WRITE_BURST) {
+		override_i2c_write_setting(io_master_info,&(i2c_list->i2c_settings),"WRITE_BURST");
 		rc = camera_io_dev_write_continuous(
 			io_master_info,
 			&(i2c_list->i2c_settings),
@@ -262,7 +305,13 @@ int32_t cam_actuator_apply_settings(struct cam_actuator_ctrl_t *a_ctrl,
 		CAM_ERR(CAM_ACTUATOR, " Invalid settings");
 		return -EINVAL;
 	}
-
+	//ASUS_BSP +++ Zhengwei "enable/disable vcm move dynamically for debug"
+	if(!asus_allow_vcm_move())
+	{
+		CAM_ERR(CAM_ACTUATOR,"OIS not allow vcm move, bypass vcm writing!\n");
+		return 0;
+	}
+	//ASUS_BSP --- Zhengwei "enable/disable vcm move dynamically for debug"
 	list_for_each_entry(i2c_list,
 		&(i2c_set->list_head), list) {
 		rc = cam_actuator_i2c_modes_util(

@@ -152,6 +152,12 @@ config QCOM_DLOAD_MODE
 	  make the kernel reboot on a kernel panic - that must be
 	  enabled via another mechanism.
 
+config QCOM_DLOAD_DEFAULT
+	bool "default enable download mode"
+	depends on QCOM_DLOAD_MODE
+	help
+	  This makes default enable download mode
+
 config POWER_RESET_QNAP
 	bool "QNAP power-off driver"
 	depends on OF_GPIO && PLAT_ORION

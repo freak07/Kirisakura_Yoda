@@ -415,7 +415,9 @@
 			qcom,proxy-consumer-current = <115000>;
 			qcom,init-voltage = <1800000>;
 			qcom,init-mode = <RPMH_REGULATOR_MODE_LPM>;
+			regulator-always-on;
 		};
+
 	};
 
 	rpmh-regulator-ldoa15 {
@@ -469,9 +471,10 @@
 			regulator-name = "pm8150_l17";
 			qcom,set = <RPMH_REGULATOR_SET_ALL>;
 			regulator-min-microvolt = <2856000>;
-			regulator-max-microvolt = <3008000>;
+			regulator-max-microvolt = <3300000>;
 			qcom,init-voltage = <2856000>;
 			qcom,init-mode = <RPMH_REGULATOR_MODE_LPM>;
+			regulator-always-on;
 		};
 	};
 

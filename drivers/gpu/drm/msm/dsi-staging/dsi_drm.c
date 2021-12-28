@@ -31,6 +31,33 @@
 #define DEFAULT_PANEL_JITTER_ARRAY_SIZE		2
 #define DEFAULT_PANEL_PREFILL_LINES	25
 
+/* ASUS BSP Display +++ */
+extern bool panelOff;
+
+static void dsi_bridge_asusFps(struct drm_bridge *bridge, int type)
+{
+	int rc = 0;
+	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+
+	if (!bridge) {
+		pr_err("Invalid params\n");
+		return;
+	}
+	
+	if (panelOff) {
+		pr_err("[Display] skip dfps in display off.\n");
+		return;
+	}
+
+	rc = dsi_display_asusFps(c_bridge->display, type);
+	if (rc) {
+		pr_err("[%d] failed to perform a fps set, rc=%d\n",
+			c_bridge->id, rc);
+		return;
+	}
+}
+/* ASUS BSP Display --- */
+
 static struct dsi_display_mode_priv_info default_priv_info = {
 	.panel_jitter_numer = DEFAULT_PANEL_JITTER_NUMERATOR,
 	.panel_jitter_denom = DEFAULT_PANEL_JITTER_DENOMINATOR,
@@ -73,14 +100,14 @@ static void convert_to_dsi_mode(const struct drm_display_mode *drm_mode,
 
 	if (msm_is_mode_seamless(drm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_SEAMLESS;
-	if (msm_is_mode_dynamic_fps(drm_mode))
-		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DFPS;
+	//if (msm_is_mode_dynamic_fps(drm_mode))
+	//	dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DFPS;
 	if (msm_needs_vblank_pre_modeset(drm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_VBLANK_PRE_MODESET;
-	if (msm_is_mode_seamless_dms(drm_mode))
-		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
-	if (msm_is_mode_seamless_vrr(drm_mode))
-		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_VRR;
+	//if (msm_is_mode_seamless_dms(drm_mode))
+	//	dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+	//if (msm_is_mode_seamless_vrr(drm_mode))
+	//	dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_VRR;
 	if (msm_is_mode_seamless_poms(drm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_POMS;
 	if (msm_is_mode_seamless_dyn_clk(drm_mode))
@@ -124,14 +151,14 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_SEAMLESS)
 		drm_mode->flags |= DRM_MODE_FLAG_SEAMLESS;
-	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DFPS)
-		drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYNAMIC_FPS;
+	//if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DFPS)
+	//	drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYNAMIC_FPS;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_VBLANK_PRE_MODESET)
 		drm_mode->private_flags |= MSM_MODE_FLAG_VBLANK_PRE_MODESET;
-	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS)
-		drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DMS;
-	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_VRR)
-		drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_VRR;
+	//if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS)
+	//	drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DMS;
+	//if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_VRR)
+	//	drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_VRR;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS)
 		drm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_POMS;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)
@@ -446,11 +473,13 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 			(crtc_state->connectors_changed && clone_mode)) &&
 			((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) ||
 			(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK))) {
-			pr_err("seamless on active/conn(%d/%d) changed 0x%x\n",
+			pr_err("seamless on active/conn(%d/%d) changed 0x%x, skip return false\n",
 				crtc_state->active_changed,
 				crtc_state->connectors_changed,
 				dsi_mode.dsi_mode_flags);
+#if 0 // remove for compatible with DFPS solution on Q
 			return false;
+#endif
 		}
 	}
 
@@ -544,6 +573,7 @@ static const struct drm_bridge_funcs dsi_bridge_ops = {
 	.disable      = dsi_bridge_disable,
 	.post_disable = dsi_bridge_post_disable,
 	.mode_set     = dsi_bridge_mode_set,
+	.asusFps      = dsi_bridge_asusFps,  /* ASUS BSP Display +++ */
 };
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,

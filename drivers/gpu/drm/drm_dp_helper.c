@@ -182,6 +182,20 @@ EXPORT_SYMBOL(drm_dp_bw_code_to_link_rate);
 
 #define AUX_RETRY_INTERVAL 500 /* us */
 
+extern volatile enum POGO_ID ASUS_POGO_ID;
+enum POGO_ID {
+    NO_INSERT = 0,
+    INBOX,
+    STATION,
+    DT,
+    PCIE,
+    ERROR_1,
+    OTHER,
+};
+
+extern bool g_hpd;
+extern bool is_in_dp_disconnect;
+
 /**
  * DOC: dp helpers
  *
@@ -241,6 +255,16 @@ static int drm_dp_dpcd_access(struct drm_dp_aux *aux, u8 request,
 		 */
 		if (!err)
 			err = ret;
+
+	    if (ASUS_POGO_ID == 200) {
+	        pr_err("Station unlocked.\n");
+	        goto unlock;
+	    }
+
+	    if (is_in_dp_disconnect && !g_hpd) {
+	        pr_err("dp disconnect, do not retry.\n");
+	        goto unlock;
+	    }
 	}
 
 	DRM_DEBUG_KMS("Too many retries, giving up. First error: %d\n", err);

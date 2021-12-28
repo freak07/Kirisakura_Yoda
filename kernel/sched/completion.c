@@ -73,6 +73,7 @@ void complete_all(struct completion *x)
 }
 EXPORT_SYMBOL(complete_all);
 
+extern struct completion fake_completion;
 static inline long __sched
 do_wait_for_common(struct completion *x,
 		   long (*action)(long), long timeout, int state)
@@ -82,6 +83,7 @@ do_wait_for_common(struct completion *x,
 
 		__add_wait_queue_entry_tail_exclusive(&x->wait, &wait);
 		do {
+			task_thread_info(current)->pWaitingCompletion = x;
 			if (signal_pending_state(state, current)) {
 				timeout = -ERESTARTSYS;
 				break;
@@ -91,6 +93,7 @@ do_wait_for_common(struct completion *x,
 			timeout = action(timeout);
 			spin_lock_irq(&x->wait.lock);
 		} while (!x->done && timeout);
+		task_thread_info(current)->pWaitingCompletion = &fake_completion;
 		__remove_wait_queue(&x->wait, &wait);
 		if (!x->done)
 			return timeout;

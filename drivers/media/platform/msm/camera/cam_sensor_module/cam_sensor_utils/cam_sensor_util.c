@@ -21,6 +21,9 @@
 #define VALIDATE_VOLTAGE(min, max, config_val) ((config_val) && \
 	(config_val >= min) && (config_val <= max))
 
+//#undef CAM_DBG
+//#define CAM_DBG CAM_ERR
+
 static struct i2c_settings_list*
 	cam_sensor_get_i2c_ptr(struct i2c_settings_array *i2c_reg_settings,
 		uint32_t size)
@@ -1594,7 +1597,7 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 	CAM_DBG(CAM_SENSOR, "power setting size: %d", ctrl->power_setting_size);
 
 	for (index = 0; index < ctrl->power_setting_size; index++) {
-		CAM_DBG(CAM_SENSOR, "index: %d", index);
+		CAM_DBG(CAM_SENSOR, "index: %d name=%s ", index,soc_info->dev_name);
 		power_setting = &ctrl->power_setting[index];
 		if (!power_setting) {
 			CAM_ERR(CAM_SENSOR,
@@ -1713,7 +1716,7 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 				goto power_up_failed;
 			}
 			if (power_setting->seq_val < num_vreg) {
-				CAM_DBG(CAM_SENSOR, "Enable Regulator");
+				CAM_DBG(CAM_SENSOR, "Enable Regulator %s",soc_info->rgltr_name[power_setting->seq_val]);
 				vreg_idx = power_setting->seq_val;
 
 				soc_info->rgltr[vreg_idx] =

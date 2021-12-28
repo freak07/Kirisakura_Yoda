@@ -1966,6 +1966,7 @@ static void qcom_glink_cancel_rx_work(struct qcom_glink *glink)
 	list_for_each_entry_safe(dcmd, tmp, &glink->rx_queue, node)
 		kfree(dcmd);
 }
+extern void modem_resume_irq_num_function(int modem_resume_irq);/*AS-K Log Modem Wake Up QMI Info+*/
 
 struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 					   unsigned long features,
@@ -2056,6 +2057,12 @@ struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 	ret = enable_irq_wake(irq);
 	if (ret < 0)
 		dev_err(dev, "enable_irq_wake() failed on %d\n", irq);
+
+	/*AS-K Log Modem Wake Up QMI Info+*/
+	if (!strcmp("modem", glink->name)) {
+		modem_resume_irq_num_function(glink->irq);
+	}
+	/*AS-K Log Modem Wake Up QMI Info-*/
 
 	size = of_property_count_u32_elems(dev->of_node, "cpu-affinity");
 	if (size > 0) {

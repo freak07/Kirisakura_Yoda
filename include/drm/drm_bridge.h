@@ -236,6 +236,9 @@ struct drm_bridge_funcs {
 	 * The enable callback is optional.
 	 */
 	void (*enable)(struct drm_bridge *bridge);
+	
+	/* ASUS BSP Display +++ */
+	void (*asusFps)(struct drm_bridge *bridge, int type);
 };
 
 /**
@@ -291,4 +294,6 @@ struct drm_bridge *devm_drm_panel_bridge_add(struct device *dev,
 					     u32 connector_type);
 #endif
 
+/* ASUS BSP Display +++ */
+void drm_bridge_asusFps(struct drm_bridge *bridge, int type);
 #endif

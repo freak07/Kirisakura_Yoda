@@ -12,6 +12,7 @@
  */
 
 #include <dt-bindings/clock/qcom,gcc-sm8150.h>
+#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 
 &soc {
 	pcie0: qcom,pcie@1c00000 {
@@ -288,7 +289,7 @@
 	};
 
 	pcie1: qcom,pcie@1c08000 {
-		compatible = "qcom,pci-msm";
+		compatible = "qcom,pci-msm-asus-remove";
 		cell-index = <1>;
 
 		reg = <0x1c08000 0x4000>,

@@ -3298,6 +3298,7 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 
 	/* Optional to use the Rx pin as wakeup irq */
 	dev_port->wakeup_irq = platform_get_irq(pdev, 1);
+   dev_info(&pdev->dev, "wakeup_irq 0x%d\n", dev_port->wakeup_irq);
 	if ((dev_port->wakeup_irq < 0 && !is_console))
 		dev_info(&pdev->dev, "No wakeup IRQ configured\n");
 
@@ -3356,6 +3357,8 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 	init_completion(&dev_port->s_cmd_timeout);
 
 	uport->irq = platform_get_irq(pdev, 0);
+    dev_info(&pdev->dev, "uport irq 0x%d\n", uport->irq); //FIH dbg
+	
 	if (uport->irq < 0) {
 		ret = uport->irq;
 		dev_err(&pdev->dev, "Failed to get IRQ %d\n", ret);
@@ -3393,7 +3396,8 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 			pm_runtime_forbid(&pdev->dev);
 		} else {
 			pm_runtime_set_suspended(&pdev->dev);
-			pm_runtime_set_autosuspend_delay(&pdev->dev, 150);
+			//dev_info(&pdev->dev, "Test patch : set autosuspend delay -1\n");
+			pm_runtime_set_autosuspend_delay(&pdev->dev,150);
 			pm_runtime_use_autosuspend(&pdev->dev);
 			pm_runtime_enable(&pdev->dev);
 		}

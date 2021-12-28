@@ -33,6 +33,11 @@
 #define GET_H32(val) (val >> 32)
 #define GET_L32(val) (val & 0xffffffff)
 
+/* ASUS BSP Display +++ */
+bool g_first_clock_rate = true;
+extern int lastFps;
+/* ASUS BSP Display --- */
+
 static DEFINE_MUTEX(sde_core_perf_lock);
 
 /**
@@ -236,6 +241,14 @@ static void _sde_core_perf_calc_crtc(struct sde_kms *kms,
 		GET_L32(perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_LLCC]),
 		GET_H32(perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_EBI]),
 		GET_L32(perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_EBI]));
+	
+	if (!g_first_clock_rate) {
+		if (lastFps == 90 || lastFps == 120)
+			perf->core_clk_rate = 460000000;
+		else if (lastFps == 60)
+			perf->core_clk_rate = 345000000;
+	}
+
 	trace_sde_perf_calc_crtc(crtc->base.id,
 			perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC],
 			perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_LLCC],
@@ -539,6 +552,14 @@ static u64 _sde_core_perf_get_core_clk_rate(struct sde_kms *kms)
 			tmp_rate = sde_crtc->cur_perf.core_clk_rate;
 
 			clk_rate = max(tmp_rate, clk_rate);
+
+			/* ASUS BSP Display, boost up mdp clock +++ */
+			if (g_first_clock_rate) {
+				if (lastFps != 60) 
+					clk_rate = clk_rate * 250 / 100;
+				g_first_clock_rate = false;
+			}
+			/* ASUS BSP Display, boost up mdp clock --- */
 
 			clk_rate = clk_round_rate(kms->perf.core_clk, clk_rate);
 		}

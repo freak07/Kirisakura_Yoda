@@ -26,6 +26,7 @@
  * reinit_completion(), and macros DECLARE_COMPLETION(),
  * DECLARE_COMPLETION_ONSTACK().
  */
+#if 0
 struct completion {
 	unsigned int done;
 	wait_queue_head_t wait;
@@ -33,6 +34,18 @@ struct completion {
 	struct lockdep_map_cross map;
 #endif
 };
+#else
+struct completion {
+        unsigned int done;
+        wait_queue_head_t wait;
+#ifdef CONFIG_LOCKDEP_COMPLETIONS
+	struct lockdep_map_cross map;
+#endif
+        char name[32];
+};
+#define COMPLETION_INITIALIZER(work) \
+        { 0, __WAIT_QUEUE_HEAD_INITIALIZER((work).wait), #work }
+#endif
 
 #ifdef CONFIG_LOCKDEP_COMPLETIONS
 static inline void complete_acquire(struct completion *x)
@@ -70,9 +83,10 @@ static inline void complete_release_commit(struct completion *x) {}
 	{ 0, __WAIT_QUEUE_HEAD_INITIALIZER((work).wait), \
 	STATIC_CROSS_LOCKDEP_MAP_INIT("(complete)" #work, &(work)) }
 #else
-#define COMPLETION_INITIALIZER(work) \
-	{ 0, __WAIT_QUEUE_HEAD_INITIALIZER((work).wait) }
+//#define COMPLETION_INITIALIZER(work) \
+//	{ 0, __WAIT_QUEUE_HEAD_INITIALIZER((work).wait) }
 #endif
+
 
 #define COMPLETION_INITIALIZER_ONSTACK(work) \
 	(*({ init_completion(&work); &work; }))

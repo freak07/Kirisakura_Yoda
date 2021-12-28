@@ -43,8 +43,19 @@
 #include "sde_core_perf.h"
 #include "sde_trace.h"
 
+/* ASUS BSP Display +++ */
+#define COMMIT_FRAMES_COUNT 5
+int display_commit_cnt = COMMIT_FRAMES_COUNT;
+bool g_allow_dfps = false;
+/* ASUS BSP Display --- */
+
+unsigned int g_frame_count = 0;
+
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
+
+#define COMMIT_FRAMES_COUNT 5
+int dp_display_commit_cnt = COMMIT_FRAMES_COUNT;
 
 struct sde_crtc_custom_events {
 	u32 event;
@@ -4289,6 +4300,10 @@ static bool _sde_crtc_prepare_for_kickoff_rot(struct drm_device *dev,
 	return false;
 }
 
+extern void TP_call_FOD(int id, bool down);
+extern void set_panel_in_recovery(void);
+extern bool g_recovery_mode;
+extern struct completion fod_fbc_comp;
 void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
 {
@@ -4416,6 +4431,30 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		spin_lock_irqsave(&dev->event_lock, flags);
 		sde_crtc->event = crtc->state->event;
 		spin_unlock_irqrestore(&dev->event_lock, flags);
+	}
+
+	/* ASUS BSP Display +++ */
+	if (display_commit_cnt > 0 && !strcmp(crtc->name, "crtc-0")) {
+		pr_err("fbc%d\n", display_commit_cnt);
+		if (display_commit_cnt == 4)
+			g_allow_dfps = true;
+
+		if ( 5 == display_commit_cnt)
+			TP_call_FOD( 11, true);
+		if (g_recovery_mode && display_commit_cnt == 1)
+			set_panel_in_recovery();
+		display_commit_cnt--;
+	}
+	/* ASUS BSP Display --- */
+
+	if (!strcmp(crtc->name, "crtc-0")) {
+		g_frame_count ++;
+
+		if (g_frame_count > 4096)
+			g_frame_count = 0;
+
+		if (&fod_fbc_comp != NULL)
+                 complete_all(&fod_fbc_comp);
 	}
 
 	SDE_ATRACE_END("crtc_commit");
@@ -4774,6 +4813,8 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 		break;
 	}
 
+	dp_display_commit_cnt = COMMIT_FRAMES_COUNT;
+
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
 
@@ -4931,6 +4972,9 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	/* disable clk & bw control until clk & bw properties are set */
 	cstate->bw_control = false;
 	cstate->bw_split_vote = false;
+	/* ASUS BSP Display +++ */
+	display_commit_cnt = COMMIT_FRAMES_COUNT;
+	/* ASUS BSP Display --- */
 
 	mutex_unlock(&sde_crtc->crtc_lock);
 }

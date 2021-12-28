@@ -283,6 +283,9 @@ struct dsi_display {
 	u32 te_source;
 };
 
+/* ASUS BSP Display +++ */
+int dsi_display_asusFps(struct dsi_display *display, int type);
+
 int dsi_display_dev_probe(struct platform_device *pdev);
 int dsi_display_dev_remove(struct platform_device *pdev);
 
@@ -374,7 +377,7 @@ int dsi_display_get_mode_count(struct dsi_display *display, u32 *count);
  * dsi_display_get_modes() - get modes supported by display
  * @display:            Handle to display.
  * @modes;              Output param, list of DSI modes. Number of modes matches
- *                      count got from display->panel->num_display_modes;
+ *                      count returned by dsi_display_get_mode_count
  *
  * Return: error code.
  */

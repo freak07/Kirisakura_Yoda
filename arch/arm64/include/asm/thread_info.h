@@ -47,6 +47,9 @@ struct thread_info {
 #ifdef CONFIG_SHADOW_CALL_STACK
 	void			*shadow_call_stack;
 #endif
+       struct mutex *          pWaitingMutex;          //ASUS_BSP + [thomas]Add for slow log
+       struct completion *     pWaitingCompletion;     //ASUS_BSP + [thomas]Add for slow log
+       struct rt_mutex *       pWaitingRTMutex;        //ASUS_BSP + [thomas]Add for slow log
 };
 
 #define INIT_THREAD_INFO(tsk)						\

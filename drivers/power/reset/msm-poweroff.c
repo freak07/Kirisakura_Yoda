@@ -77,7 +77,11 @@ static bool force_warm_reboot;
 
 static int in_panic;
 static struct kobject dload_kobj;
+#ifdef CONFIG_QCOM_DLOAD_DEFAULT
 static int dload_type = SCM_DLOAD_FULLDUMP;
+#else
+static int dload_type = SCM_DLOAD_MINIDUMP;
+#endif
 static void *dload_mode_addr;
 static void *dload_type_addr;
 static bool dload_mode_enabled;
@@ -216,6 +220,8 @@ static int dload_set(const char *val, const struct kernel_param *kp)
 	if (!download_mode)
 		scm_disable_sdi();
 
+	pr_err("%s: download_mode = %d\n", __func__, download_mode);  /* ASUS */
+
 	return 0;
 }
 #else
@@ -287,6 +293,7 @@ static void halt_spmi_pmic_arbiter(void)
 
 static void msm_restart_prepare(const char *cmd)
 {
+	ulong *printk_buffer_slot2_addr;
 	bool need_warm_reset = false;
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	/* Write download mode flags if we're panic'ing
@@ -307,6 +314,12 @@ static void msm_restart_prepare(const char *cmd)
 	} else {
 		need_warm_reset = (get_dload_mode() ||
 				(cmd != NULL && cmd[0] != '\0'));
+	}
+	
+	if (!in_panic) {
+		// Normal reboot. Clean the printk buffer magic
+		printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
+		*printk_buffer_slot2_addr = 0;
 	}
 
 	if (force_warm_reboot)
@@ -343,6 +356,28 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_KEYS_CLEAR);
 			__raw_writel(0x7766550a, restart_reason);
+		// +++ ASUS_BSP: add asus reboot reason for ATD interface
+		} else if (!strcmp(cmd, "shutdown")) {
+		qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_SHUTDOWN);
+			__raw_writel(0x6f656d88, restart_reason);
+		} else if (!strcmp(cmd, "EnterShippingMode")) {
+		qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_SHIPMODE);
+			__raw_writel(0x6f656d43, restart_reason);
+		// --- ASUS_BSP: add asus reboot reason for ATD interface
+		// +++ ASUS_BSP: add for asus user unlock
+		} else if (!strncmp(cmd, "oem-08", 6)) {
+				qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_UNLOCK);
+			__raw_writel(0x6f656d08, restart_reason);
+		// --- ASUS_BSP: add for asus user unlock
+		// +++ ASUS_BSP : add for re-partition from gpt to partition:0 for add rawdump partition
+		} else if (!strncmp(cmd, "oem-78", 6)) {
+				qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_REPLACE_RAMDUMP);
+                        __raw_writel(0x6f656d78, restart_reason);
+		// --- ASUS_BSP : add for re-partition from gpt to partition:0 for add rawdump partition
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;
@@ -416,7 +451,16 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 
 static void do_msm_poweroff(void)
 {
-	pr_notice("Powering off the SoC\n");
+
+       ulong *printk_buffer_slot2_addr;
+
+        pr_notice("Powering off the SoC\n");
+       // Normal power off. Clean the printk buffer magic
+       printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2;
+       *printk_buffer_slot2_addr = 0;
+
+       printk(KERN_CRIT "Clean asus_global...\n");
+       flush_cache_all();
 
 	set_dload_mode(0);
 	scm_disable_sdi();
@@ -543,6 +587,16 @@ static size_t store_dload_mode(struct kobject *kobj, struct attribute *attr,
 	/*Overwrite TCSR reg*/
 	set_dload_mode(dload_type);
 	mutex_unlock(&tcsr_lock);
+
+	#if (1)  /* ASUS */
+	switch (dload_type) {
+		case SCM_DLOAD_FULLDUMP:  pr_err("%s: dload_type = full\n", __func__); break;
+		case SCM_DLOAD_MINIDUMP:  pr_err("%s: dload_type = mini\n", __func__); break;
+		case SCM_DLOAD_BOTHDUMPS: pr_err("%s: dload_type = both\n", __func__); break;
+		default:                  pr_err("%s: dload_type = unknown\n", __func__); break;
+	}
+	#endif
+
 	return count;
 }
 RESET_ATTR(dload_mode, 0644, show_dload_mode, store_dload_mode);
@@ -735,3 +789,31 @@ static int __init msm_restart_init(void)
 	return platform_driver_register(&msm_restart_driver);
 }
 pure_initcall(msm_restart_init);
+
+#if (1)
+// +++ ASUS_BSP : add for ramdump on/off by cmdline
+static int __init cmd_dload_mode(char *str)
+{
+	int val;
+
+	if (1 == get_option(&str, &val)) {
+		if (1 == val) {
+			download_mode = 1;
+			set_dload_mode(download_mode);
+			dload_type = SCM_DLOAD_FULLDUMP;
+		}
+	}
+
+	pr_err("%s: download_mode = %d\n", __func__, download_mode);
+	switch (dload_type) {
+		case SCM_DLOAD_FULLDUMP:  pr_err("%s: dload_type = full\n", __func__); break;
+		case SCM_DLOAD_MINIDUMP:  pr_err("%s: dload_type = mini\n", __func__); break;
+		case SCM_DLOAD_BOTHDUMPS: pr_err("%s: dload_type = both\n", __func__); break;
+		default:                  pr_err("%s: dload_type = unknown\n", __func__); break;
+	}
+
+	return 1;
+}
+__setup("ram_dump=", cmd_dload_mode);
+// --- ASUS_BSP : add for ramdump on/off by cmdline
+#endif

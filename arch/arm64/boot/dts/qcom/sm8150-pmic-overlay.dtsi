@@ -80,6 +80,7 @@
 
 &pm8150b_charger {
 	dpdm-supply = <&usb2_phy0>;
+	dpdm2-supply = <&usb2_phy1>;//Add for supporting bottom SDP port
 	smb5_vconn: qcom,smb5-vconn {
 		regulator-name = "smb5-vconn";
 	};

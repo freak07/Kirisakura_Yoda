@@ -213,6 +213,7 @@ struct cam_flash_ctrl {
 	struct camera_io_master             io_master_info;
 	struct i2c_data_settings            i2c_data;
 	uint32_t                            last_flush_req;
+	uint8_t                             ax_flash_type;  //current flash type
 };
 
 int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg);
@@ -230,5 +231,13 @@ int cam_flash_pmic_flush_request(struct cam_flash_ctrl *fctrl,
 	enum cam_flash_flush_type, uint64_t req_id);
 void cam_flash_shutdown(struct cam_flash_ctrl *fctrl);
 int cam_flash_release_dev(struct cam_flash_ctrl *fctrl);
+
+int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,	bool regulator_enable);
+void cam_flash_shutdown(struct cam_flash_ctrl *flash_ctrl);
+//ASUS_BSP +++ Zhengwei "porting flash"
+int cam_flash_low(struct cam_flash_ctrl *flash_ctrl,struct cam_flash_frame_setting *flash_data);
+int cam_flash_high(struct cam_flash_ctrl *flash_ctrl,struct cam_flash_frame_setting *flash_data);
+//ASUS_BSP --- Zhengwei "porting flash"
+void cancel_delay_flash(void);  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
 
 #endif /*_CAM_FLASH_DEV_H_*/

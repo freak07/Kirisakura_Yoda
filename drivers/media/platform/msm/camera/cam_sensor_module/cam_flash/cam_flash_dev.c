@@ -17,6 +17,19 @@
 #include "cam_flash_core.h"
 #include "cam_common_util.h"
 
+#include "asus_flash.h"
+
+//ASUS_BSP Bryant +++ "Add delay time of flash-off when closing session"
+#include <linux/workqueue.h>
+#include <linux/timer.h>
+#define DELAY_TIME 500
+static struct cam_flash_ctrl *g_fctrl;
+static bool flash_off_flag = 0;
+extern int asus_flash_state;
+static void delay_flash_off(struct work_struct *work);
+static DECLARE_DELAYED_WORK(delay_flash_off_work, delay_flash_off);
+//ASUS_BSP Bryant --- "Add delay time of flash-off when closing session"
+
 static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 		void *arg, struct cam_flash_private_soc *soc_private)
 {
@@ -42,14 +55,17 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 		struct cam_sensor_acquire_dev flash_acq_dev;
 		struct cam_create_dev_hdl bridge_params;
 
+		asus_flash_set_camera_state(1);//ASUS_BSP Zhengwei "porting flash"
 		CAM_DBG(CAM_FLASH, "CAM_ACQUIRE_DEV");
 
 		if (fctrl->flash_state != CAM_FLASH_STATE_INIT) {
 			CAM_ERR(CAM_FLASH,
 				"Cannot apply Acquire dev: Prev state: %d",
 				fctrl->flash_state);
+#ifndef CAM_FACTORY_CONFIG
 			rc = -EINVAL;
 			goto release_mutex;
+#endif
 		}
 
 		if (fctrl->bridge_intf.device_hdl != -1) {
@@ -89,6 +105,7 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 			goto release_mutex;
 		}
 		fctrl->flash_state = CAM_FLASH_STATE_ACQUIRE;
+		cam_flash_copy_fctrl(fctrl); //fix TT 1346900 when low batter use flash , copy acquire flash fctrl for flash_off(fctrl)
 		break;
 	}
 	case CAM_RELEASE_DEV: {
@@ -118,6 +135,18 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 			rc = -EAGAIN;
 			goto release_mutex;
 		}
+		fctrl->ax_flash_type = 0;
+
+		CAM_DBG(CAM_FLASH, "fctrl %p flash_type %d ax_flash_type %d",
+		fctrl,
+		fctrl->flash_type,
+		fctrl->ax_flash_type);
+
+		//ASUS_BSP Bryant +++ "Add delay time of flash-off when closing session"
+		cancel_delay_flash();
+		if (asus_flash_state)
+			cam_flash_off(fctrl);
+		//ASUS_BSP Bryant --- "Add delay time of flash-off when closing session"
 
 		if ((fctrl->flash_state == CAM_FLASH_STATE_CONFIG) ||
 			(fctrl->flash_state == CAM_FLASH_STATE_START))
@@ -180,8 +209,29 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 			rc = -EINVAL;
 			goto release_mutex;
 		}
-
+		CAM_DBG(CAM_FLASH, "fctrl %p flash_type %d ax_flash_type %d",
+		fctrl,
+		fctrl->flash_type,
+		fctrl->ax_flash_type);
+		//ASUS_BSP Bryant +++ "Add delay time of flash-off when closing session"
+		if(fctrl->ax_flash_type == CAMERA_SENSOR_FLASH_OP_FIRELOW)
+		{
+		if (delayed_work_pending(&delay_flash_off_work)) {
+			cancel_delayed_work(&delay_flash_off_work);
+			CAM_DBG(CAM_FLASH, "delay work is pending");
+		}
+		if (!schedule_delayed_work(&delay_flash_off_work,msecs_to_jiffies(DELAY_TIME))) {
 		cam_flash_off(fctrl);
+			CAM_DBG(CAM_FLASH, "schedule_delayed_work failed");
+		}
+		else {
+			flash_off_flag = 1;
+		}
+			}
+		else
+			cam_flash_off(fctrl);
+		//ASUS_BSP Bryant ---"Add delay time of flash-off when closing session"
+
 		fctrl->func_tbl.flush_req(fctrl, FLUSH_ALL, 0);
 		fctrl->last_flush_req = 0;
 		fctrl->flash_state = CAM_FLASH_STATE_ACQUIRE;
@@ -259,7 +309,8 @@ static long cam_flash_subdev_ioctl(struct v4l2_subdev *sd,
 		break;
 	}
 	default:
-		CAM_ERR(CAM_FLASH, "Invalid ioctl cmd type");
+		//CAM_ERR(CAM_FLASH, "Invalid ioctl cmd type");
+		CAM_ERR_RATE_LIMIT_CUSTOM(CAM_SYNC, 1, 5,"Invalid ioctl cmd type");
 		rc = -EINVAL;
 		break;
 	}
@@ -365,6 +416,7 @@ static int cam_flash_subdev_close(struct v4l2_subdev *sd,
 	cam_flash_shutdown(fctrl);
 	mutex_unlock(&fctrl->flash_mutex);
 
+	asus_flash_set_camera_state(0);//ASUS_BSP Zhengwei "porting flash"
 	return 0;
 }
 
@@ -497,17 +549,22 @@ static int32_t cam_flash_platform_probe(struct platform_device *pdev)
 	fctrl->bridge_intf.ops.apply_req = cam_flash_apply_request;
 	fctrl->bridge_intf.ops.flush_req = cam_flash_flush_request;
 	fctrl->last_flush_req = 0;
+	fctrl->ax_flash_type = 0;
 
 	mutex_init(&(fctrl->flash_mutex));
 
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
-	CAM_DBG(CAM_FLASH, "Probe success");
+	asus_flash_init(fctrl);//ASUS_BSP Zhengwei "porting flash"
+	cam_flash_copy_fctrl(fctrl);
+	g_fctrl = fctrl;  //ASUS_BSP Bryant "Add delay time of flash-off when closing session"
+	CAM_INFO(CAM_FLASH, "Flash probe succeed");
 	return rc;
 
 free_cci_resource:
 	kfree(fctrl->io_master_info.cci_client);
 	fctrl->io_master_info.cci_client = NULL;
 free_resource:
+	CAM_INFO(CAM_FLASH, "Flash probe failed");
 	kfree(fctrl->i2c_data.per_frame);
 	kfree(fctrl->soc_info.soc_private);
 	cam_soc_util_release_platform_resource(&fctrl->soc_info);
@@ -647,6 +704,34 @@ static void __exit cam_flash_exit_module(void)
 	i2c_del_driver(&cam_flash_i2c_driver);
 }
 
+//ASUS_BSP Bryant +++ "Add delay time of flash-off when closing session"
+static void delay_flash_off(struct work_struct *work)
+{
+	int flash_state;
+	if (NULL != g_fctrl) {
+		CAM_DBG(CAM_FLASH, "physical_flash_off_time g_fctrl->flash_state:%d asus_flash_state: %d, flash_off_flag: %d",g_fctrl->flash_state,asus_flash_state, flash_off_flag);
+
+		mutex_lock(&(g_fctrl->flash_mutex));
+		if (flash_off_flag && asus_flash_state) {
+			flash_state = g_fctrl->flash_state;
+			if (!cam_flash_off(g_fctrl))
+				g_fctrl->flash_state = flash_state;
+		}
+		mutex_unlock(&(g_fctrl->flash_mutex));
+	}
+}
+
+void cancel_delay_flash()
+{
+	flash_off_flag = 0;
+	if (delayed_work_pending(&delay_flash_off_work)) {
+		if (!cancel_delayed_work(&delay_flash_off_work)) {
+			CAM_DBG(CAM_FLASH, "cancel_delayed_work failed");
+		}
+		CAM_DBG(CAM_FLASH, "cancel_delayed_work asus_flash_state: %d",asus_flash_state);
+	}
+}
+//ASUS_BSP Bryant --- "Add delay time of flash-off when closing session"
 module_init(cam_flash_init_module);
 module_exit(cam_flash_exit_module);
 MODULE_DESCRIPTION("CAM FLASH");

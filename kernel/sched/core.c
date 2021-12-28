@@ -4197,7 +4197,19 @@ static bool check_same_owner(struct task_struct *p)
 {
 	const struct cred *cred = current_cred(), *pcred;
 	bool match;
-
+   
+    //printk("TGPA- check_same_owner %s, %s", p->comm, current->comm);
+    // glory of king
+    if(!strcmp(p->comm, "UnityMain") && !strncmp("Thread-", current->comm, 7))
+        return true;
+    //pubg
+    if(!strncmp(p->comm, "Thread-", 7) && !strncmp("Thread-", current->comm, 7))
+        return true;
+    //peace elite
+    if(!strncmp(p->comm, "RenderThread", strlen("RenderThread")) && !strncmp("Thread-", current->comm, 7))
+        return true;
+    
+    
 	rcu_read_lock();
 	pcred = __task_cred(p);
 	match = (uid_eq(cred->euid, pcred->euid) ||
@@ -4817,7 +4829,7 @@ out_unlock:
 	return retval;
 }
 
-long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
+long sched_setaffinity(pid_t pid, struct cpumask *in_mask) //ASUS_BSP
 {
 	cpumask_var_t cpus_allowed, new_mask;
 	struct task_struct *p;
@@ -4863,6 +4875,16 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	if (retval)
 		goto out_free_new_mask;
 
+//ASUS_BSP_++
+       if ( *cpumask_bits(in_mask) == 0x80 )
+       {
+//            cpumask_clear(in_mask);
+            cpumask_set_cpu(4, in_mask);
+            cpumask_set_cpu(5, in_mask);
+            cpumask_set_cpu(6, in_mask);
+//            cpumask_set_cpu(7, in_mask);
+       }
+//ASUS_BSP_--
 
 	cpuset_cpus_allowed(p, cpus_allowed);
 	cpumask_and(new_mask, in_mask, cpus_allowed);

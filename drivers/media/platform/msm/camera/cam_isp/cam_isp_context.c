@@ -36,9 +36,6 @@ static const char isp_dev_name[] = "cam-isp";
 static int cam_isp_context_dump_active_request(void *data, unsigned long iova,
 	uint32_t buf_info);
 
-static void __cam_isp_ctx_send_sof_timestamp(struct cam_isp_context *ctx_isp,
-		uint64_t request_id, uint32_t sof_event_status);
-
 static const char *__cam_isp_evt_val_to_type(
 	uint32_t evt_id)
 {
@@ -595,10 +592,9 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 	struct cam_ctx_request  *req;
 	struct cam_isp_ctx_req  *req_isp;
 	struct cam_context *ctx = ctx_isp->base;
-	uint64_t buf_done_req_id;
 
 	if (list_empty(&ctx->active_req_list)) {
-		CAM_INFO(CAM_ISP, "Buf done with no active request!");
+		CAM_WARN(CAM_ISP, "Buf done with no active request!");
 		goto end;
 	}
 
@@ -709,7 +705,6 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 		return rc;
 
 	ctx_isp->active_req_cnt--;
-	buf_done_req_id = req->request_id;
 
 	if (req_isp->bubble_detected && req_isp->bubble_report) {
 		req_isp->num_acked = 0;
@@ -728,12 +723,17 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 			ctx_isp->substate_activated);
 		__cam_isp_ctx_update_event_record(ctx_isp,
 			CAM_ISP_CTX_EVENT_BUFDONE, req);
+	} else if (req->request_id > ctx_isp->req_info.reported_req_id) {
+		CAM_INFO_RATE_LIMIT(CAM_ISP,
+			"Not moving req_id %lld to free list. rep_req %lld",
+			req->request_id, ctx_isp->req_info.reported_req_id);
+		__cam_isp_ctx_update_state_monitor_array(ctx_isp,
+			CAM_ISP_HW_EVENT_DONE,
+			ctx_isp->substate_activated,
+			ctx_isp->substate_activated);
+		__cam_isp_ctx_update_event_record(ctx_isp,
+			CAM_ISP_CTX_EVENT_BUFDONE, req);
 	} else {
-		if (ctx_isp->req_info.reported_req_id < buf_done_req_id) {
-			ctx_isp->req_info.reported_req_id = buf_done_req_id;
-			__cam_isp_ctx_send_sof_timestamp(ctx_isp,
-			buf_done_req_id, CAM_REQ_MGR_SOF_EVENT_SUCCESS);
-		}
 		list_del_init(&req->list);
 		list_add_tail(&req->list, &ctx->free_req_list);
 		req_isp->reapply = false;
@@ -876,13 +876,11 @@ static int __cam_isp_ctx_reg_upd_in_epoch_state(
 	else if (ctx_isp->fps && ((rup_event_data->irq_mono_boot_time -
 		ctx_isp->irq_timestamps) > ((1000*1000)/ctx_isp->fps))) {
 		ctx_isp->irq_delay_detect = true;
-
-		if (req)
-			trace_cam_isp_irq_delay_detect("IRQ delay at reg_upd",
-				ctx, req->request_id,
-				ctx_isp->substate_activated,
-				(rup_event_data->irq_mono_boot_time -
-				ctx_isp->irq_timestamps));
+		trace_cam_isp_irq_delay_detect("IRQ delay at reg_upd",
+			ctx, req->request_id,
+			ctx_isp->substate_activated,
+			(rup_event_data->irq_mono_boot_time -
+			ctx_isp->irq_timestamps));
 	}
 
 	ctx_isp->irq_timestamps = rup_event_data->irq_mono_boot_time;
@@ -1024,6 +1022,8 @@ static int __cam_isp_ctx_notify_sof_in_activated_state(
 			if (req->request_id >
 				ctx_isp->req_info.reported_req_id) {
 				request_id = req->request_id;
+				req_isp =
+					(struct cam_isp_ctx_req *)req->req_priv;
 				ctx_isp->req_info.reported_req_id = request_id;
 				ctx_isp->req_info.last_reported_id_time_stamp =
 					jiffies_to_msecs(jiffies);
@@ -1054,6 +1054,14 @@ static int __cam_isp_ctx_notify_sof_in_activated_state(
 			"Can not notify SOF to CRM for ctx %u",
 			ctx->ctx_id);
 		rc = -EFAULT;
+	}
+
+	if ((req_isp) && (req_isp->num_acked == req_isp->num_fence_map_out)) {
+		CAM_INFO_RATE_LIMIT(CAM_REQ,
+			"Move active req %lld to free [all fences done] ctx %u",
+			req->request_id, ctx_isp->active_req_cnt, ctx->ctx_id);
+		list_del_init(&req->list);
+		list_add_tail(&req->list, &ctx->free_req_list);
 	}
 
 	return 0;
@@ -1188,7 +1196,7 @@ end:
 static int __cam_isp_ctx_epoch_in_applied(struct cam_isp_context *ctx_isp,
 	void *evt_data)
 {
-	struct cam_ctx_request    *req = NULL;
+	struct cam_ctx_request    *req;
 	struct cam_isp_ctx_req    *req_isp = NULL;
 	struct cam_context        *ctx = ctx_isp->base;
 	uint64_t  request_id = 0;
@@ -2300,7 +2308,7 @@ static int __cam_isp_ctx_dump_in_top_state(struct cam_context *ctx,
 	struct timeval cur_time;
 	int rc = 0;
 	uintptr_t cpu_addr;
-	size_t buf_len = 0;
+	size_t buf_len;
 	struct cam_isp_context_dump_header *hdr;
 	uint64_t *addr, *start;
 	uint8_t *dst;
@@ -2479,7 +2487,6 @@ static int __cam_isp_ctx_flush_req_in_top_state(
 	struct cam_hw_stop_args           stop_args;
 	struct cam_isp_start_args         start_isp;
 	struct cam_hw_reset_args          reset_args;
-
 	if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_ALL) {
 		CAM_INFO(CAM_ISP, "ctx id:%d Last request id to flush is %lld",
 			ctx->ctx_id, flush_req->req_id);
@@ -2839,7 +2846,6 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 		notify.req_id = req->request_id;
 		notify.error = CRM_KMD_ERR_BUBBLE;
 		ctx->ctx_crm_intf->notify_err(&notify);
-		atomic_set(&ctx_isp->process_bubble, 1);
 		CAM_DBG(CAM_ISP, "Notify CRM about Bubble frame %lld",
 			ctx_isp->frame_id);
 	} else {
@@ -2899,33 +2905,6 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_state(
 	ctx_isp->boot_timestamp = sof_event_data->boot_time;
 	CAM_DBG(CAM_ISP, "frame id: %lld time stamp:0x%llx",
 		ctx_isp->frame_id, ctx_isp->sof_timestamp_val);
-
-	if (atomic_read(&ctx_isp->process_bubble)) {
-		if (list_empty(&ctx->active_req_list)) {
-			CAM_ERR(CAM_ISP, "No available active req in bubble");
-			atomic_set(&ctx_isp->process_bubble, 0);
-			return -EINVAL;
-		}
-
-		req = list_first_entry(&ctx->active_req_list,
-			struct cam_ctx_request, list);
-		req_isp = (struct cam_isp_ctx_req *) req->req_priv;
-
-		if (req_isp->bubble_detected) {
-			req_isp->num_acked = 0;
-			req_isp->bubble_detected = false;
-			list_del_init(&req->list);
-			list_add(&req->list, &ctx->pending_req_list);
-			atomic_set(&ctx_isp->process_bubble, 0);
-			ctx_isp->active_req_cnt--;
-			CAM_DBG(CAM_REQ,
-			"Move active req:%lld to pending list(cnt=%d) ctx:%u",
-				req->request_id,
-				ctx_isp->active_req_cnt, ctx->ctx_id);
-			goto end;
-		}
-	}
-
 	/*
 	 * Signal all active requests with error and move the  all the active
 	 * requests to free list
@@ -2946,7 +2925,7 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_state(
 		list_add_tail(&req->list, &ctx->free_req_list);
 		ctx_isp->active_req_cnt--;
 	}
-end:
+
 	/* notify reqmgr with sof signal */
 	if (ctx->ctx_crm_intf && ctx->ctx_crm_intf->notify_trigger) {
 		notify.link_hdl = ctx->link_hdl;

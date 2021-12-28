@@ -1407,6 +1407,7 @@ static int configfs_composite_bind(struct usb_gadget *gadget,
 				list_add(&f->list, &cfg->func_list);
 				goto err_purge_funcs;
 			}
+			pr_info("[USB][CONFIGFS] Binding function: %s\n", f->name);
 		}
 		usb_ep_autoconfig_reset(cdev->gadget);
 	}
