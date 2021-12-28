@@ -1,12 +1,3 @@
-miles@miles-system:~$ adb shell
-adb: no devices/emulators found
-miles@miles-system:~$ adb shell
-adb: no devices/emulators found
-miles@miles-system:~$ adb shell
-adb: no devices/emulators found
-miles@miles-system:~$ adb shell
-ASUS_I001_1:/ $ su
-ASUS_I001_1:/ # zcat /proc/config.gz
 #
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm64 4.14.190 Kernel Configuration
@@ -6090,4 +6081,41 @@ CONFIG_STACKDEPOT=y
 CONFIG_STACK_HASH_ORDER_SHIFT=12
 CONFIG_SBITMAP=y
 # CONFIG_STRING_SELFTEST is not set
-ASUS_I001_1:/ #                                                                                                                                                                                                                                                                   
+
+
+
+#
+# Qualcomm Atheros CLD WLAN module
+#
+CONFIG_QCA_CLD_WLAN=y
+CONFIG_QCACLD_WLAN_LFR3=y
+CONFIG_PRIMA_WLAN_OKC=y
+CONFIG_WLAN_FEATURE_11W=y
+CONFIG_WLAN_FEATURE_LPSS=y
+CONFIG_QCOM_VOWIFI_11R=y
+CONFIG_QCACLD_FEATURE_NAN=y
+CONFIG_QCACLD_FEATURE_GREEN_AP=y
+CONFIG_HELIUMPLUS=y
+CONFIG_QCOM_TDLS=y
+CONFIG_QCOM_LTE_COEX=y
+CONFIG_MPC_UT_FRAMEWORK=y
+CONFIG_WLAN_OFFLOAD_PACKETS=y
+CONFIG_WLAN_FASTPATH=y
+CONFIG_WLAN_NAPI=y
+CONFIG_WLAN_TX_FLOW_CONTROL_V2=y
+CONFIG_WLAN_SYNC_TSF=y
+CONFIG_LFR_SUBNET_DETECTION=y
+CONFIG_MCC_TO_SCC_SWITCH=y
+CONFIG_QCACLD_WLAN_LFR2=y
+CONFIG_WLAN_FEATURE_DISA=y
+CONFIG_WLAN_FEATURE_FIPS=y
+CONFIG_WLAN_FEATURE_11AX=y
+CONFIG_ICMP_DISABLE_PS=y
+CONFIG_BUILD_TIMESTAMP=y
+CONFIG_WLAN_FEATURE_FILS=y
+CONFIG_NAN_CONVERGENCE=y
+CONFIG_WLAN_OBJMGR_DEBUG=y
+CONFIG_WLAN_FEATURE_DFS_OFFLOAD=y
+CONFIG_WLAN_FEATURE_SARV1_TO_SARV2=y
+# CONFIG_GOLDFISH is not set
+# CONFIG_CHROME_PLATFORMS is not set
