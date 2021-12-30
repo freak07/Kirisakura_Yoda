@@ -232,3 +232,16 @@ unsigned int sched_get_cpu_util(int cpu)
 	busy = div64_ul((util * 100), capacity);
 	return busy;
 }
+
+#ifdef CONFIG_SCHED_WALT
+u64 sched_lpm_disallowed_time(int cpu)
+{
+	u64 now = sched_clock();
+	u64 bias_end_time = atomic64_read(&per_cpu(busy_hyst_end_time, cpu));
+
+	if (now < bias_end_time)
+		return bias_end_time - now;
+
+	return 0;
+}
+#endif

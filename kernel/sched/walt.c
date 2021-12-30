@@ -3740,7 +3740,7 @@ unlock:
 
 extern int lastFps;
 
-void sched_set_refresh_rate()
+void sched_set_refresh_rate(void)
 {
 	if (HZ == 250 && sysctl_sched_dynamic_ravg_window_enable) {
 		if (lastFps >= 60 && lastFps < 90)

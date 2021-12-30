@@ -601,6 +601,29 @@ static void clear_predict_history(void)
 
 static void update_history(struct cpuidle_device *dev, int idx);
 
+static inline bool lpm_disallowed(s64 sleep_us, int cpu, struct lpm_cpu *pm_cpu)
+{
+	uint64_t bias_time = 0;
+
+	if (cpu_isolated(cpu))
+		goto out;
+
+	if (sleep_disabled)
+		return true;
+
+	bias_time = sched_lpm_disallowed_time(cpu);
+	if (bias_time) {
+		pm_cpu->bias = bias_time;
+		return true;
+	}
+
+out:
+	if (sleep_us < 0)
+		return true;
+
+	return false;
+}
+
 static int cpu_power_select(struct cpuidle_device *dev,
 		struct lpm_cpu *cpu)
 {

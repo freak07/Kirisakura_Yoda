@@ -1476,7 +1476,7 @@ TRACE_EVENT(sched_task_util,
 		int start_cpu),
 
 	TP_ARGS(p, next_cpu, backup_cpu, target_cpu, sync, need_idle, fastpath,
-		placement_boost start_t, stune_boosted, is_rtg, rtg_skip_min,
+		placement_boost, start_t, stune_boosted, is_rtg, rtg_skip_min,
 		start_cpu),
 
 	TP_STRUCT__entry(
